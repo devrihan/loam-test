@@ -9,6 +9,7 @@ from config.settings import Settings
 from loam.navigator import LoamNavigator
 from loam.api_capture import ApiCollector
 from master.excel_loader import MasterWorkbook
+
 from validation.checks import (
     check_student_marks,
     check_section_average,
@@ -18,6 +19,12 @@ from validation.checks import (
     summarize_results,
 )
 
+from report.html_report import write_and_open_report
+
+
+# ============================================================
+# PRINT CHECK SUMMARY
+# ============================================================
 
 def print_check_summary(
     name: str,
@@ -40,6 +47,11 @@ def print_check_summary(
     print(
         f"Pass Rate: {summary['pass_rate']}%"
     )
+
+
+# ============================================================
+# PRINT FAILURES
+# ============================================================
 
 def print_failures(
     check_name: str,
@@ -136,6 +148,10 @@ def print_failures(
         )
 
 
+# ============================================================
+# MAIN
+# ============================================================
+
 def main():
 
     parser = argparse.ArgumentParser()
@@ -172,14 +188,17 @@ def main():
             "LOAM_PASSWORD is missing from .env"
         )
 
-    # ---------------------------------------------------------
-    # Parse Grade-Section
-    # ---------------------------------------------------------
+    # ========================================================
+    # PARSE GRADE / SECTION
+    # ========================================================
 
     try:
-        grade, section = args.grade_section.split(
-            "-",
-            1,
+
+        grade, section = (
+            args.grade_section.split(
+                "-",
+                1,
+            )
         )
 
     except ValueError:
@@ -188,10 +207,16 @@ def main():
             "Grade-Section must look like 12-C"
         )
 
+    # ========================================================
+    # HEADER
+    # ========================================================
+
     print("=" * 70)
+
     print(
         "LOAM DATA VALIDATION"
     )
+
     print("=" * 70)
 
     print(
@@ -199,11 +224,13 @@ def main():
     )
 
     print(
-        f"Grade-Section : {args.grade_section}"
+        f"Grade-Section : "
+        f"{args.grade_section}"
     )
 
     print(
-        f"Master Excel  : {args.master}"
+        f"Master Excel  : "
+        f"{args.master}"
     )
 
     print(
@@ -213,17 +240,26 @@ def main():
 
     print("=" * 70)
 
-    # ---------------------------------------------------------
-    # Load Master Excel
-    # ---------------------------------------------------------
+    # ========================================================
+    # LOAD MASTER EXCEL
+    # ========================================================
+
+    print(
+        f"\nLoading Master Excel: "
+        f"{args.master}"
+    )
 
     master = MasterWorkbook(
         args.master
     )
 
-    # ---------------------------------------------------------
-    # Start Playwright
-    # ---------------------------------------------------------
+    print(
+        "✓ Master Excel loaded"
+    )
+
+    # ========================================================
+    # PLAYWRIGHT
+    # ========================================================
 
     with sync_playwright() as p:
 
@@ -235,9 +271,9 @@ def main():
 
         page = context.new_page()
 
-        # -----------------------------------------------------
-        # API collector
-        # -----------------------------------------------------
+        # ----------------------------------------------------
+        # API COLLECTOR
+        # ----------------------------------------------------
 
         collector = ApiCollector()
 
@@ -246,9 +282,9 @@ def main():
             collector.handle_response,
         )
 
-        # -----------------------------------------------------
-        # Navigator
-        # -----------------------------------------------------
+        # ----------------------------------------------------
+        # NAVIGATOR
+        # ----------------------------------------------------
 
         nav = LoamNavigator(
             page=page,
@@ -257,17 +293,17 @@ def main():
             password=settings.password,
         )
 
-        # =====================================================
+        # ====================================================
         # 1. LOGIN
-        # =====================================================
+        # ====================================================
 
         print("\n[1] LOGIN")
 
         nav.login()
 
-        # =====================================================
+        # ====================================================
         # 2. SUBJECT
-        # =====================================================
+        # ====================================================
 
         print("\n[2] SUBJECT")
 
@@ -275,9 +311,9 @@ def main():
             args.subject
         )
 
-        # =====================================================
-        # 3. GRADE-SECTION
-        # =====================================================
+        # ====================================================
+        # 3. GRADE SECTION
+        # ====================================================
 
         print("\n[3] GRADE-SECTION")
 
@@ -285,44 +321,109 @@ def main():
             args.grade_section
         )
 
-        # =====================================================
-        # 4. DASHBOARD / CHAPTER DATA
-        # =====================================================
+        # ====================================================
+        # 4. CHAPTER
+        # ====================================================
 
-        print("\n[4] DASHBOARD")
+        print("\n[4] CHAPTER")
 
-# The chapter-stats API is triggered when
-# the Grade-Section is selected.
-#
-# DO NOT clear the collector here because
-# that would delete the chapter-stats response
-# we just captured.
+        # IMPORTANT:
+        # The chapter-stats API must be captured after
+        # actually opening the Chapter tab.
 
-        page.wait_for_timeout(3000)
+        nav.go_to_chapter()
 
-        # =====================================================
+        # Give the Chapter page/API time to load.
+
+        page.wait_for_timeout(
+            3000
+        )
+
+        chapter_stats = (
+            collector.get_chapter_stats()
+        )
+
+        if chapter_stats is None:
+
+            raise RuntimeError(
+                "chapter-stats API was not captured "
+                "after opening Chapter tab."
+            )
+
+        print(
+            "✓ chapter-stats API captured"
+        )
+
+        # ====================================================
         # 5. STUDENTS
-        # =====================================================
+        # ====================================================
 
         print("\n[5] STUDENTS")
 
         nav.go_to_students()
 
-        page.wait_for_timeout(3000)
+        page.wait_for_timeout(
+            3000
+        )
 
-        # =====================================================
+        roster = (
+            collector.get_roster()
+        )
+
+        student_chapter_stats = (
+            collector.get_student_chapter_stats()
+        )
+
+        if roster is None:
+
+            raise RuntimeError(
+                "roster API was not captured."
+            )
+
+        if student_chapter_stats is None:
+
+            raise RuntimeError(
+                "student-chapter-stats API "
+                "was not captured."
+            )
+
+        print(
+            "✓ roster API captured"
+        )
+
+        print(
+            "✓ student-chapter-stats API captured"
+        )
+
+        # ====================================================
         # 6. QUESTIONS
-        # =====================================================
+        # ====================================================
 
         print("\n[6] QUESTIONS")
 
         nav.go_to_questions()
 
-        page.wait_for_timeout(3000)
+        page.wait_for_timeout(
+            3000
+        )
 
-        # =====================================================
+        question_stats = (
+            collector.get_question_stats()
+        )
+
+        if question_stats is None:
+
+            raise RuntimeError(
+                "question-stats API was not captured."
+            )
+
+        print(
+            "✓ question-stats API captured"
+        )
+
+        # ====================================================
         # 7. VERIFY API CAPTURE
-        # =====================================================
+        # ====================================================
 
         print("\n[7] API CAPTURE")
 
@@ -335,6 +436,7 @@ def main():
             )
 
             for api in missing:
+
                 print(
                     f"  - {api}"
                 )
@@ -347,25 +449,11 @@ def main():
             "✓ All four required APIs captured"
         )
 
-        # =====================================================
-        # 8. GET API DATA
-        # =====================================================
+        # ====================================================
+        # 8. API DATA
+        # ====================================================
 
         print("\n[8] API DATA")
-
-        roster = collector.get_roster()
-
-        chapter_stats = (
-            collector.get_chapter_stats()
-        )
-
-        student_chapter_stats = (
-            collector.get_student_chapter_stats()
-        )
-
-        question_stats = (
-            collector.get_question_stats()
-        )
 
         print(
             f"Students              : "
@@ -387,17 +475,18 @@ def main():
             f"{len(question_stats)}"
         )
 
-        # =====================================================
+        # ====================================================
         # 9. VALIDATION
-        # =====================================================
+        # ====================================================
 
         print("\n[9] VALIDATION")
 
         all_results = {}
 
-        # -----------------------------------------------------
-        # Check 1
-        # -----------------------------------------------------
+        # ====================================================
+        # CHECK 1
+        # Individual Student Marks
+        # ====================================================
 
         student_marks_results = (
             check_student_marks(
@@ -417,14 +506,16 @@ def main():
             "1. Individual Student Marks",
             student_marks_results,
         )
+
         print_failures(
             "1. Individual Student Marks",
             student_marks_results,
         )
 
-        # -----------------------------------------------------
-        # Check 2
-        # -----------------------------------------------------
+        # ====================================================
+        # CHECK 2
+        # Section Average
+        # ====================================================
 
         section_average_result = (
             check_section_average(
@@ -436,9 +527,13 @@ def main():
             )
         )
 
+        # check_section_average returns ONE dict.
+
         all_results[
             "Section Average"
-        ] = [section_average_result]
+        ] = [
+            section_average_result
+        ]
 
         print_check_summary(
             "2. Section Average",
@@ -450,9 +545,10 @@ def main():
             [section_average_result],
         )
 
-        # -----------------------------------------------------
-        # Check 3
-        # -----------------------------------------------------
+        # ====================================================
+        # CHECK 3
+        # Chapter-wise Section Average
+        # ====================================================
 
         chapter_average_results = (
             check_chapter_average(
@@ -478,10 +574,10 @@ def main():
             chapter_average_results,
         )
 
-    
-        # -----------------------------------------------------
-        # Check 5
-        # -----------------------------------------------------
+        # ====================================================
+        # CHECK 5
+        # Question-wise Average
+        # ====================================================
 
         question_results = (
             check_question_stats(
@@ -501,14 +597,16 @@ def main():
             "5. Question-wise Average",
             question_results,
         )
+
         print_failures(
             "5. Question-wise Average",
             question_results,
         )
 
-        # -----------------------------------------------------
-        # Check 6
-        # -----------------------------------------------------
+        # ====================================================
+        # CHECK 6
+        # Student Chapter-wise Average
+        # ====================================================
 
         student_chapter_results = (
             check_student_chapter_stats(
@@ -528,18 +626,24 @@ def main():
             "6. Student Chapter-wise Average",
             student_chapter_results,
         )
+
         print_failures(
             "6. Student Chapter-wise Average",
             student_chapter_results,
         )
 
-        # =====================================================
+        # ====================================================
         # 10. FINAL SUMMARY
-        # =====================================================
+        # ====================================================
 
         print("\n")
+
         print("=" * 70)
-        print("FINAL VALIDATION SUMMARY")
+
+        print(
+            "FINAL VALIDATION SUMMARY"
+        )
+
         print("=" * 70)
 
         total_checks = 0
@@ -556,11 +660,25 @@ def main():
                 results
             )
 
-            total_checks += summary["total"]
-            total_pass += summary["passed"]
-            total_fail += summary["failed"]
-            total_missing += summary["missing"]
-            total_errors += summary["errors"]
+            total_checks += (
+                summary["total"]
+            )
+
+            total_pass += (
+                summary["passed"]
+            )
+
+            total_fail += (
+                summary["failed"]
+            )
+
+            total_missing += (
+                summary["missing"]
+            )
+
+            total_errors += (
+                summary["errors"]
+            )
 
             print(
                 f"{check_name:<35} "
@@ -569,7 +687,9 @@ def main():
                 f"MISSING={summary['missing']:<4}"
             )
 
-        print("-" * 70)
+        print(
+            "-" * 70
+        )
 
         print(
             f"TOTAL   : {total_checks}"
@@ -598,16 +718,16 @@ def main():
                 f"{round(total_pass / total_checks * 100, 2)}%"
             )
 
-        # =====================================================
-        # 11. SAVE RAW VALIDATION RESULT
-        # =====================================================
+        # ====================================================
+        # 11. SAVE JSON
+        # ====================================================
 
-        report_path = (
+        json_report_path = (
             "validation_result.json"
         )
 
         with open(
-            report_path,
+            json_report_path,
             "w",
             encoding="utf-8",
         ) as file:
@@ -629,12 +749,37 @@ def main():
 
         print(
             f"\n✓ Validation result saved to "
-            f"{report_path}"
+            f"{json_report_path}"
+        )
+
+        # ====================================================
+        # 12. HTML TEST REPORT
+        # ====================================================
+
+        print(
+            "\nGenerating HTML test report..."
+        )
+
+        html_report_path = (
+            write_and_open_report(
+                subject=args.subject,
+                grade_section=args.grade_section,
+                master_excel=args.master,
+                tolerance=settings.numeric_tolerance,
+                all_results=all_results,
+            )
         )
 
         print(
-            "\nBrowser will remain open for inspection."
+            f"✓ Report generated: "
+            f"{html_report_path}"
         )
+
+        print(
+            "✓ Report opened in your browser"
+        )
+
+        # Keep Playwright browser open briefly.
 
         page.wait_for_timeout(
             5000
@@ -642,6 +787,10 @@ def main():
 
         browser.close()
 
+
+# ============================================================
+# ENTRY POINT
+# ============================================================
 
 if __name__ == "__main__":
     main()

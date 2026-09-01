@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import (
+    Page,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 
 class LoamNavigator:
@@ -14,6 +17,7 @@ class LoamNavigator:
     - Select a subject
     - Read available Grade-Sections
     - Select a Grade-Section
+    - Open Chapter
     - Open Students
     - Open Questions
     """
@@ -63,7 +67,6 @@ class LoamNavigator:
             name="Sign In",
         ).click()
 
-        # Wait until dashboard navigation happens.
         self.page.wait_for_load_state(
             "domcontentloaded"
         )
@@ -107,12 +110,13 @@ class LoamNavigator:
             )
 
         except PlaywrightTimeoutError:
-
             raise RuntimeError(
                 "Dashboard filters did not load."
             )
 
-        print("✓ Dashboard filters loaded")
+        print(
+            "✓ Dashboard filters loaded"
+        )
 
     # =========================================================
     # SUBJECT
@@ -120,7 +124,8 @@ class LoamNavigator:
 
     def get_subjects(self) -> list[str]:
         """
-        Open Subject dropdown and return all available subjects.
+        Open Subject dropdown and return all
+        available subjects.
         """
 
         trigger = self._subject_trigger()
@@ -142,15 +147,19 @@ class LoamNavigator:
 
         for i in range(options.count()):
 
-            text = options.nth(i).inner_text().strip()
+            text = (
+                options.nth(i)
+                .inner_text()
+                .strip()
+            )
 
             if text:
                 subjects.append(text)
 
-        # Close dropdown.
-        self.page.keyboard.press("Escape")
+        self.page.keyboard.press(
+            "Escape"
+        )
 
-        # Remove duplicates while preserving order.
         subjects = list(
             dict.fromkeys(subjects)
         )
@@ -188,8 +197,9 @@ class LoamNavigator:
 
         option.click()
 
-        # Give dashboard API/filter state time to update.
-        self.page.wait_for_timeout(1000)
+        self.page.wait_for_timeout(
+            1000
+        )
 
         print(
             f"✓ Subject selected → {subject}"
@@ -201,11 +211,8 @@ class LoamNavigator:
 
     def get_grade_sections(self) -> list[str]:
         """
-        Open Grade-Sec dropdown and return all available
-        Grade-Section combinations.
-
-        Example:
-            ["12-A", "12-B", "12-C", ...]
+        Open Grade-Sec dropdown and return all
+        available Grade-Section combinations.
         """
 
         trigger = self._grade_section_trigger()
@@ -227,19 +234,24 @@ class LoamNavigator:
 
         for i in range(options.count()):
 
-            text = options.nth(i).inner_text().strip()
+            text = (
+                options.nth(i)
+                .inner_text()
+                .strip()
+            )
 
             if text:
                 grade_sections.append(text)
 
-        self.page.keyboard.press("Escape")
+        self.page.keyboard.press(
+            "Escape"
+        )
 
         grade_sections = list(
             dict.fromkeys(grade_sections)
         )
 
         if not grade_sections:
-
             raise RuntimeError(
                 "No Grade-Section options found."
             )
@@ -252,7 +264,8 @@ class LoamNavigator:
     ) -> None:
 
         print(
-            f"Selecting Grade-Sec → {grade_section}"
+            f"Selecting Grade-Sec → "
+            f"{grade_section}"
         )
 
         trigger = self._grade_section_trigger()
@@ -272,13 +285,57 @@ class LoamNavigator:
 
         option.click()
 
-        # Allow the dashboard to reload data
-        # for the selected Grade-Section.
-        self.page.wait_for_timeout(1500)
+        self.page.wait_for_timeout(
+            1500
+        )
 
         print(
             f"✓ Grade-Sec selected → "
             f"{grade_section}"
+        )
+
+    # =========================================================
+    # CHAPTER
+    # =========================================================
+
+    def go_to_chapter(self) -> None:
+        """
+        Open the Chapter page.
+
+        LOAM sidebar uses:
+            Chapter -> /chapter
+
+        We use the accessible link name instead
+        of relying on CSS classes.
+        """
+
+        print(
+            "Opening Chapter tab..."
+        )
+
+        link = self.page.get_by_role(
+            "link",
+            name="Chapter",
+            exact=True,
+        )
+
+        link.wait_for(
+            state="visible",
+            timeout=10000,
+        )
+
+        link.click()
+
+        self.page.wait_for_load_state(
+            "domcontentloaded"
+        )
+
+        self.page.wait_for_timeout(
+            1500
+        )
+
+        print(
+            "✓ Chapter tab opened"
         )
 
     # =========================================================
@@ -287,21 +344,34 @@ class LoamNavigator:
 
     def go_to_students(self) -> None:
 
-        print("Opening Students tab...")
+        print(
+            "Opening Students tab..."
+        )
 
-        self.page.get_by_role(
+        link = self.page.get_by_role(
             "link",
             name="Students",
             exact=True,
-        ).click()
+        )
+
+        link.wait_for(
+            state="visible",
+            timeout=10000,
+        )
+
+        link.click()
 
         self.page.wait_for_load_state(
             "domcontentloaded"
         )
 
-        self.page.wait_for_timeout(1500)
+        self.page.wait_for_timeout(
+            1500
+        )
 
-        print("✓ Students tab opened")
+        print(
+            "✓ Students tab opened"
+        )
 
     # =========================================================
     # QUESTIONS
@@ -309,35 +379,57 @@ class LoamNavigator:
 
     def go_to_questions(self) -> None:
 
-        print("Opening Questions tab...")
+        print(
+            "Opening Questions tab..."
+        )
 
-        self.page.get_by_role(
+        link = self.page.get_by_role(
             "link",
             name="Questions",
             exact=True,
-        ).click()
+        )
+
+        link.wait_for(
+            state="visible",
+            timeout=10000,
+        )
+
+        link.click()
 
         self.page.wait_for_load_state(
             "domcontentloaded"
         )
 
-        self.page.wait_for_timeout(1500)
+        self.page.wait_for_timeout(
+            1500
+        )
 
-        print("✓ Questions tab opened")
+        print(
+            "✓ Questions tab opened"
+        )
 
     # =========================================================
-    # CHAPTER / DASHBOARD
+    # DASHBOARD / HOME
     # =========================================================
 
     def go_to_dashboard(self) -> None:
 
-        print("Opening Dashboard...")
+        print(
+            "Opening Dashboard..."
+        )
 
-        self.page.get_by_role(
+        link = self.page.get_by_role(
             "link",
             name="Home",
             exact=True,
-        ).click()
+        )
+
+        link.wait_for(
+            state="visible",
+            timeout=10000,
+        )
+
+        link.click()
 
         self.page.wait_for_load_state(
             "domcontentloaded"
@@ -345,7 +437,9 @@ class LoamNavigator:
 
         self.wait_for_filters()
 
-        print("✓ Dashboard opened")
+        print(
+            "✓ Dashboard opened"
+        )
 
     # =========================================================
     # INTERNAL SELECTOR HELPERS
@@ -360,7 +454,6 @@ class LoamNavigator:
         ).first
 
         if trigger.count() == 0:
-
             raise RuntimeError(
                 "Subject dropdown trigger "
                 "could not be found."
@@ -377,7 +470,6 @@ class LoamNavigator:
         ).first
 
         if trigger.count() == 0:
-
             raise RuntimeError(
                 "Grade-Sec dropdown trigger "
                 "could not be found."

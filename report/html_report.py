@@ -1,0 +1,3059 @@
+# from __future__ import annotations
+
+# import html
+# import webbrowser
+# from datetime import datetime
+# from pathlib import Path
+# from typing import Any
+
+
+# def _esc(value: Any) -> str:
+#     return html.escape(
+#         "" if value is None else str(value)
+#     )
+
+
+# def _status_class(status: str) -> str:
+#     status = str(status).upper()
+
+#     if status == "PASS":
+#         return "pass"
+
+#     if status == "FAIL":
+#         return "fail"
+
+#     if status == "MISSING":
+#         return "missing"
+
+#     return "error"
+
+
+# def _status_icon(status: str) -> str:
+#     status = str(status).upper()
+
+#     if status == "PASS":
+#         return "✓"
+
+#     if status == "FAIL":
+#         return "✕"
+
+#     if status == "MISSING":
+#         return "!"
+
+#     return "⚠"
+
+
+# def _format_value(value: Any) -> str:
+#     if value is None:
+#         return "—"
+
+#     if isinstance(value, float):
+#         return f"{value:.2f}"
+
+#     return str(value)
+
+
+# def build_html_report(
+#     *,
+#     subject: str,
+#     grade_section: str,
+#     master_excel: str,
+#     tolerance: float,
+#     all_results: dict[str, list[dict]],
+# ) -> str:
+
+#     total = 0
+#     passed = 0
+#     failed = 0
+#     missing = 0
+#     errors = 0
+
+#     for results in all_results.values():
+
+#         for result in results:
+
+#             total += 1
+
+#             status = result.get(
+#                 "status",
+#                 "ERROR",
+#             ).upper()
+
+#             if status == "PASS":
+#                 passed += 1
+
+#             elif status == "FAIL":
+#                 failed += 1
+
+#             elif status == "MISSING":
+#                 missing += 1
+
+#             else:
+#                 errors += 1
+
+#     pass_rate = (
+#         round(
+#             passed / total * 100,
+#             2,
+#         )
+#         if total
+#         else 0
+#     )
+
+#     overall_status = (
+#         "PASS"
+#         if failed == 0
+#         and missing == 0
+#         and errors == 0
+#         else "FAIL"
+#     )
+
+#     generated_at = datetime.now().strftime(
+#         "%d %b %Y · %I:%M:%S %p"
+#     )
+
+#     check_cards = []
+
+#     for check_name, results in (
+#         all_results.items()
+#     ):
+
+#         check_total = len(results)
+
+#         check_passed = sum(
+#             r.get("status") == "PASS"
+#             for r in results
+#         )
+
+#         check_failed = sum(
+#             r.get("status") == "FAIL"
+#             for r in results
+#         )
+
+#         check_missing = sum(
+#             r.get("status") == "MISSING"
+#             for r in results
+#         )
+
+#         check_errors = sum(
+#             r.get("status") == "ERROR"
+#             for r in results
+#         )
+
+#         check_ok = (
+#             check_failed == 0
+#             and check_missing == 0
+#             and check_errors == 0
+#         )
+
+#         icon = "✓" if check_ok else "✕"
+#         card_class = (
+#             "check-pass"
+#             if check_ok
+#             else "check-fail"
+#         )
+
+#         check_cards.append(
+#             f"""
+#             <div class="check-card {card_class}">
+#                 <div class="check-icon">
+#                     {icon}
+#                 </div>
+
+#                 <div class="check-info">
+#                     <div class="check-title">
+#                         {_esc(check_name)}
+#                     </div>
+
+#                     <div class="check-meta">
+#                         {check_passed}/{check_total}
+#                         passed
+#                     </div>
+#                 </div>
+
+#                 <div class="check-stats">
+#                     <span class="mini-pass">
+#                         {check_passed} PASS
+#                     </span>
+
+#                     <span class="mini-fail">
+#                         {check_failed} FAIL
+#                     </span>
+#                 </div>
+#             </div>
+#             """
+#         )
+
+#     failure_sections = []
+
+#     for check_name, results in (
+#         all_results.items()
+#     ):
+
+#         failures = [
+#             r
+#             for r in results
+#             if r.get("status")
+#             in {
+#                 "FAIL",
+#                 "MISSING",
+#                 "ERROR",
+#             }
+#         ]
+
+#         if not failures:
+#             continue
+
+#         rows = []
+
+#         for result in failures:
+
+#             status = result.get(
+#                 "status",
+#                 "ERROR",
+#             )
+
+#             roll = result.get(
+#                 "roll_number"
+#             )
+
+#             student = result.get(
+#                 "student_name"
+#             )
+
+#             question = result.get(
+#                 "question"
+#             )
+
+#             chapter = result.get(
+#                 "chapter"
+#             )
+
+#             api_value = result.get(
+#                 "api_value"
+#             )
+
+#             excel_value = result.get(
+#                 "excel_value"
+#             )
+
+#             difference = result.get(
+#                 "difference"
+#             )
+
+#             identifier_parts = []
+
+#             if roll is not None:
+#                 identifier_parts.append(
+#                     f"Roll {roll}"
+#                 )
+
+#             if student:
+#                 identifier_parts.append(
+#                     _esc(student)
+#                 )
+
+#             if question is not None:
+#                 identifier_parts.append(
+#                     f"Q{_esc(question)}"
+#                 )
+
+#             if chapter:
+#                 identifier_parts.append(
+#                     _esc(chapter)
+#                 )
+
+#             identifier = " · ".join(
+#                 identifier_parts
+#             )
+
+#             if difference is None:
+#                 difference_text = "—"
+
+#             else:
+#                 difference_text = (
+#                     f"{difference:.2f}"
+#                 )
+
+#             rows.append(
+#                 f"""
+#                 <tr>
+#                     <td>
+#                         {_esc(identifier)}
+#                     </td>
+
+#                     <td class="number">
+#                         {_format_value(api_value)}
+#                     </td>
+
+#                     <td class="number">
+#                         {_format_value(excel_value)}
+#                     </td>
+
+#                     <td class="number">
+#                         {difference_text}
+#                     </td>
+
+#                     <td>
+#                         <span class="status {_status_class(status)}">
+#                             {_status_icon(status)}
+#                             {_esc(status)}
+#                         </span>
+#                     </td>
+
+#                     <td class="reason">
+#                         {_esc(result.get("message", ""))}
+#                     </td>
+#                 </tr>
+#                 """
+#             )
+
+#         failure_sections.append(
+#             f"""
+#             <section class="failure-section">
+
+#                 <div class="failure-heading">
+#                     <div>
+#                         <div class="failure-title">
+#                             {_esc(check_name)}
+#                         </div>
+
+#                         <div class="failure-subtitle">
+#                             {len(failures)}
+#                             mismatch(es)
+#                         </div>
+#                     </div>
+#                 </div>
+
+#                 <div class="table-wrap">
+
+#                     <table>
+
+#                         <thead>
+#                             <tr>
+#                                 <th>Record</th>
+#                                 <th>LOAM</th>
+#                                 <th>Master</th>
+#                                 <th>Difference</th>
+#                                 <th>Status</th>
+#                                 <th>Details</th>
+#                             </tr>
+#                         </thead>
+
+#                         <tbody>
+#                             {''.join(rows)}
+#                         </tbody>
+
+#                     </table>
+
+#                 </div>
+
+#             </section>
+#             """
+#         )
+
+#     if not failure_sections:
+
+#         failure_content = """
+#         <div class="all-good">
+#             <div class="all-good-icon">✓</div>
+#             <div>
+#                 <div class="all-good-title">
+#                     No mismatches found
+#                 </div>
+#                 <div class="all-good-subtitle">
+#                     All validation checks are within tolerance.
+#                 </div>
+#             </div>
+#         </div>
+#         """
+
+#     else:
+#         failure_content = "".join(
+#             failure_sections
+#         )
+
+#     return f"""
+# <!DOCTYPE html>
+
+# <html lang="en">
+
+# <head>
+
+# <meta charset="UTF-8">
+
+# <meta
+#     name="viewport"
+#     content="width=device-width, initial-scale=1.0"
+# >
+
+# <title>
+#     LOAM Data Validation Report
+# </title>
+
+# <style>
+
+# :root {{
+#     --bg: #f6f8fb;
+#     --card: #ffffff;
+#     --text: #172033;
+#     --muted: #697386;
+#     --border: #e6eaf0;
+#     --green: #15803d;
+#     --green-bg: #ecfdf3;
+#     --red: #dc2626;
+#     --red-bg: #fef2f2;
+#     --amber: #b45309;
+#     --amber-bg: #fffbeb;
+#     --shadow:
+#         0 8px 30px rgba(15, 23, 42, .06);
+# }}
+
+# * {{
+#     box-sizing: border-box;
+# }}
+
+# body {{
+#     margin: 0;
+#     background: var(--bg);
+#     color: var(--text);
+#     font-family:
+#         Inter,
+#         ui-sans-serif,
+#         system-ui,
+#         -apple-system,
+#         BlinkMacSystemFont,
+#         "Segoe UI",
+#         sans-serif;
+# }}
+
+# .container {{
+#     max-width: 1180px;
+#     margin: 0 auto;
+#     padding: 42px 26px 70px;
+# }}
+
+# .header {{
+#     display: flex;
+#     justify-content: space-between;
+#     gap: 24px;
+#     align-items: flex-start;
+#     margin-bottom: 28px;
+# }}
+
+# .brand {{
+#     display: flex;
+#     gap: 14px;
+#     align-items: center;
+# }}
+
+# .logo {{
+#     width: 44px;
+#     height: 44px;
+#     border-radius: 13px;
+#     display: grid;
+#     place-items: center;
+#     font-weight: 800;
+#     font-size: 18px;
+#     color: white;
+#     background:
+#         linear-gradient(
+#             135deg,
+#             #111827,
+#             #374151
+#         );
+# }}
+
+# h1 {{
+#     margin: 0;
+#     font-size: 29px;
+#     letter-spacing: -.7px;
+# }}
+
+# .subtitle {{
+#     margin-top: 6px;
+#     color: var(--muted);
+#     font-size: 14px;
+# }}
+
+# .verdict {{
+#     padding: 10px 15px;
+#     border-radius: 999px;
+#     font-weight: 800;
+#     font-size: 13px;
+# }}
+
+# .verdict.pass {{
+#     background: var(--green-bg);
+#     color: var(--green);
+# }}
+
+# .verdict.fail {{
+#     background: var(--red-bg);
+#     color: var(--red);
+# }}
+
+# .meta {{
+#     background: var(--card);
+#     border: 1px solid var(--border);
+#     border-radius: 18px;
+#     box-shadow: var(--shadow);
+#     padding: 18px 20px;
+#     display: grid;
+#     grid-template-columns:
+#         repeat(4, minmax(0, 1fr));
+#     gap: 16px;
+#     margin-bottom: 20px;
+# }}
+
+# .meta-item {{
+#     min-width: 0;
+# }}
+
+# .meta-label {{
+#     color: var(--muted);
+#     font-size: 11px;
+#     text-transform: uppercase;
+#     letter-spacing: .08em;
+#     font-weight: 700;
+# }}
+
+# .meta-value {{
+#     margin-top: 5px;
+#     font-size: 14px;
+#     font-weight: 700;
+#     overflow: hidden;
+#     text-overflow: ellipsis;
+# }}
+
+# .metrics {{
+#     display: grid;
+#     grid-template-columns:
+#         repeat(4, minmax(0, 1fr));
+#     gap: 16px;
+#     margin-bottom: 28px;
+# }}
+
+# .metric {{
+#     background: var(--card);
+#     border: 1px solid var(--border);
+#     border-radius: 18px;
+#     padding: 22px;
+#     box-shadow: var(--shadow);
+# }}
+
+# .metric-label {{
+#     color: var(--muted);
+#     font-size: 12px;
+#     font-weight: 700;
+#     text-transform: uppercase;
+#     letter-spacing: .06em;
+# }}
+
+# .metric-value {{
+#     margin-top: 8px;
+#     font-size: 32px;
+#     font-weight: 850;
+#     letter-spacing: -1px;
+# }}
+
+# .metric.pass .metric-value {{
+#     color: var(--green);
+# }}
+
+# .metric.fail .metric-value {{
+#     color: var(--red);
+# }}
+
+# .metric.rate .metric-value {{
+#     color: #2563eb;
+# }}
+
+# .section-title {{
+#     font-size: 17px;
+#     font-weight: 800;
+#     margin: 34px 0 14px;
+# }}
+
+# .check-grid {{
+#     display: grid;
+#     grid-template-columns:
+#         repeat(2, minmax(0, 1fr));
+#     gap: 14px;
+# }}
+
+# .check-card {{
+#     background: var(--card);
+#     border: 1px solid var(--border);
+#     border-radius: 17px;
+#     padding: 17px;
+#     display: flex;
+#     align-items: center;
+#     gap: 14px;
+#     box-shadow: var(--shadow);
+# }}
+
+# .check-pass {{
+#     border-left: 4px solid var(--green);
+# }}
+
+# .check-fail {{
+#     border-left: 4px solid var(--red);
+# }}
+
+# .check-icon {{
+#     width: 34px;
+#     height: 34px;
+#     border-radius: 10px;
+#     display: grid;
+#     place-items: center;
+#     font-weight: 900;
+# }}
+
+# .check-pass .check-icon {{
+#     background: var(--green-bg);
+#     color: var(--green);
+# }}
+
+# .check-fail .check-icon {{
+#     background: var(--red-bg);
+#     color: var(--red);
+# }}
+
+# .check-info {{
+#     flex: 1;
+# }}
+
+# .check-title {{
+#     font-size: 14px;
+#     font-weight: 800;
+# }}
+
+# .check-meta {{
+#     color: var(--muted);
+#     margin-top: 4px;
+#     font-size: 12px;
+# }}
+
+# .check-stats {{
+#     display: flex;
+#     gap: 8px;
+#     font-size: 11px;
+#     font-weight: 800;
+# }}
+
+# .mini-pass {{
+#     color: var(--green);
+# }}
+
+# .mini-fail {{
+#     color: var(--red);
+# }}
+
+# .failure-section {{
+#     background: var(--card);
+#     border: 1px solid var(--border);
+#     border-radius: 18px;
+#     margin-bottom: 18px;
+#     box-shadow: var(--shadow);
+#     overflow: hidden;
+# }}
+
+# .failure-heading {{
+#     padding: 17px 19px;
+#     border-bottom: 1px solid var(--border);
+# }}
+
+# .failure-title {{
+#     font-size: 15px;
+#     font-weight: 800;
+# }}
+
+# .failure-subtitle {{
+#     margin-top: 4px;
+#     color: var(--muted);
+#     font-size: 12px;
+# }}
+
+# .table-wrap {{
+#     overflow-x: auto;
+# }}
+
+# table {{
+#     width: 100%;
+#     border-collapse: collapse;
+# }}
+
+# th {{
+#     text-align: left;
+#     font-size: 11px;
+#     color: var(--muted);
+#     text-transform: uppercase;
+#     letter-spacing: .05em;
+#     background: #f9fafb;
+# }}
+
+# th, td {{
+#     padding: 13px 15px;
+#     border-bottom: 1px solid var(--border);
+#     font-size: 13px;
+# }}
+
+# tbody tr:last-child td {{
+#     border-bottom: 0;
+# }}
+
+# .number {{
+#     font-variant-numeric: tabular-nums;
+#     font-weight: 700;
+# }}
+
+# .reason {{
+#     color: var(--muted);
+# }}
+
+# .status {{
+#     display: inline-flex;
+#     gap: 5px;
+#     align-items: center;
+#     padding: 5px 9px;
+#     border-radius: 999px;
+#     font-size: 11px;
+#     font-weight: 800;
+# }}
+
+# .status.pass {{
+#     background: var(--green-bg);
+#     color: var(--green);
+# }}
+
+# .status.fail {{
+#     background: var(--red-bg);
+#     color: var(--red);
+# }}
+
+# .status.missing {{
+#     background: var(--amber-bg);
+#     color: var(--amber);
+# }}
+
+# .status.error {{
+#     background: #fef2f2;
+#     color: var(--red);
+# }}
+
+# .all-good {{
+#     background: var(--card);
+#     border: 1px solid #bbf7d0;
+#     background: var(--green-bg);
+#     border-radius: 18px;
+#     padding: 24px;
+#     display: flex;
+#     gap: 15px;
+#     align-items: center;
+# }}
+
+# .all-good-icon {{
+#     width: 40px;
+#     height: 40px;
+#     border-radius: 12px;
+#     background: #dcfce7;
+#     color: var(--green);
+#     display: grid;
+#     place-items: center;
+#     font-weight: 900;
+# }}
+
+# .all-good-title {{
+#     font-weight: 850;
+# }}
+
+# .all-good-subtitle {{
+#     color: #166534;
+#     margin-top: 3px;
+#     font-size: 13px;
+# }}
+
+# .footer {{
+#     color: var(--muted);
+#     font-size: 12px;
+#     margin-top: 30px;
+#     text-align: center;
+# }}
+
+# @media (max-width: 800px) {{
+
+#     .container {{
+#         padding: 24px 15px 50px;
+#     }}
+
+#     .header {{
+#         flex-direction: column;
+#     }}
+
+#     .meta,
+#     .metrics,
+#     .check-grid {{
+#         grid-template-columns: 1fr;
+#     }}
+
+# }}
+
+# </style>
+
+# </head>
+
+# <body>
+
+# <div class="container">
+
+#     <header class="header">
+
+#         <div class="brand">
+
+#             <div class="logo">
+#                 L
+#             </div>
+
+#             <div>
+
+#                 <h1>
+#                     LOAM Data Validation
+#                 </h1>
+
+#                 <div class="subtitle">
+#                     {_esc(subject)}
+#                     ·
+#                     Grade { _esc(grade_section.split("-", 1)[0]) }
+#                     ·
+#                     Section { _esc(grade_section.split("-", 1)[1]) }
+#                 </div>
+
+#             </div>
+
+#         </div>
+
+#         <div class="verdict {_esc(overall_status.lower())}">
+#             {_esc(overall_status)}
+#         </div>
+
+#     </header>
+
+
+#     <div class="meta">
+
+#         <div class="meta-item">
+#             <div class="meta-label">
+#                 Subject
+#             </div>
+#             <div class="meta-value">
+#                 {_esc(subject)}
+#             </div>
+#         </div>
+
+#         <div class="meta-item">
+#             <div class="meta-label">
+#                 Grade-Section
+#             </div>
+#             <div class="meta-value">
+#                 {_esc(grade_section)}
+#             </div>
+#         </div>
+
+#         <div class="meta-item">
+#             <div class="meta-label">
+#                 Master Excel
+#             </div>
+#             <div class="meta-value">
+#                 {_esc(Path(master_excel).name)}
+#             </div>
+#         </div>
+
+#         <div class="meta-item">
+#             <div class="meta-label">
+#                 Generated
+#             </div>
+#             <div class="meta-value">
+#                 {_esc(generated_at)}
+#             </div>
+#         </div>
+
+#     </div>
+
+
+#     <div class="metrics">
+
+#         <div class="metric rate">
+#             <div class="metric-label">
+#                 Pass Rate
+#             </div>
+#             <div class="metric-value">
+#                 {pass_rate:.2f}%
+#             </div>
+#         </div>
+
+#         <div class="metric pass">
+#             <div class="metric-label">
+#                 Passed
+#             </div>
+#             <div class="metric-value">
+#                 {passed}
+#             </div>
+#         </div>
+
+#         <div class="metric fail">
+#             <div class="metric-label">
+#                 Failed
+#             </div>
+#             <div class="metric-value">
+#                 {failed}
+#             </div>
+#         </div>
+
+#         <div class="metric">
+#             <div class="metric-label">
+#                 Total Records
+#             </div>
+#             <div class="metric-value">
+#                 {total}
+#             </div>
+#         </div>
+
+#     </div>
+
+
+#     <div class="section-title">
+#         Validation Checks
+#     </div>
+
+#     <div class="check-grid">
+#         {''.join(check_cards)}
+#     </div>
+
+
+#     <div class="section-title">
+#         Mismatches & Failure Details
+#     </div>
+
+#     {failure_content}
+
+
+#     <div class="footer">
+#         LOAM Data Validation ·
+#         Tolerance ±{tolerance}
+#     </div>
+
+# </div>
+
+# </body>
+
+# </html>
+# """
+
+
+# def write_and_open_report(
+#     *,
+#     subject: str,
+#     grade_section: str,
+#     master_excel: str,
+#     tolerance: float,
+#     all_results: dict[str, list[dict]],
+#     output_path: str = "reports/loam_validation_report.html",
+# ) -> Path:
+
+#     path = Path(output_path)
+
+#     path.parent.mkdir(
+#         parents=True,
+#         exist_ok=True,
+#     )
+
+#     html_content = build_html_report(
+#         subject=subject,
+#         grade_section=grade_section,
+#         master_excel=master_excel,
+#         tolerance=tolerance,
+#         all_results=all_results,
+#     )
+
+#     path.write_text(
+#         html_content,
+#         encoding="utf-8",
+#     )
+
+#     # Open as a separate browser window/tab.
+#     webbrowser.open(
+#         path.resolve().as_uri(),
+#         new=1,
+#     )
+
+#     return path
+
+
+from __future__ import annotations
+
+import html
+import webbrowser
+
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def _esc(value: Any) -> str:
+    return html.escape(
+        "" if value is None else str(value)
+    )
+
+
+def _status_class(status: str) -> str:
+    status = str(status).upper()
+
+    if status == "PASS":
+        return "pass"
+
+    if status == "FAIL":
+        return "fail"
+
+    if status == "MISSING":
+        return "missing"
+
+    return "error"
+
+
+def _status_icon(status: str) -> str:
+    status = str(status).upper()
+
+    if status == "PASS":
+        return "✓"
+
+    if status == "FAIL":
+        return "×"
+
+    if status == "MISSING":
+        return "!"
+
+    return "⚠"
+
+
+def _format_value(value: Any) -> str:
+
+    if value is None:
+        return "—"
+
+    if isinstance(value, float):
+        return f"{value:.2f}"
+
+    return str(value)
+
+
+# ============================================================
+# BUILD HTML REPORT
+# ============================================================
+
+def build_html_report(
+    *,
+    subject: str,
+    grade_section: str,
+    master_excel: str,
+    tolerance: float,
+    all_results: dict[str, list[dict]],
+) -> str:
+
+    # --------------------------------------------------------
+    # Overall statistics
+    # --------------------------------------------------------
+
+    total = 0
+    passed = 0
+    failed = 0
+    missing = 0
+    errors = 0
+
+    for results in all_results.values():
+
+        for result in results:
+
+            total += 1
+
+            status = result.get(
+                "status",
+                "ERROR",
+            ).upper()
+
+            if status == "PASS":
+                passed += 1
+
+            elif status == "FAIL":
+                failed += 1
+
+            elif status == "MISSING":
+                missing += 1
+
+            else:
+                errors += 1
+
+    pass_rate = (
+        round(
+            passed / total * 100,
+            2,
+        )
+        if total
+        else 0
+    )
+
+    overall_status = (
+        "PASS"
+        if failed == 0
+        and missing == 0
+        and errors == 0
+        else "FAIL"
+    )
+
+    generated_at = datetime.now().strftime(
+        "%d %b %Y · %I:%M:%S %p"
+    )
+
+    # --------------------------------------------------------
+    # Grade / section
+    # --------------------------------------------------------
+
+    grade = ""
+    section = ""
+
+    if "-" in grade_section:
+
+        grade, section = (
+            grade_section.split(
+                "-",
+                1,
+            )
+        )
+
+    # ========================================================
+    # CHECK CARDS
+    # ========================================================
+
+    check_cards = []
+
+    for check_name, results in all_results.items():
+
+        check_total = len(results)
+
+        check_passed = sum(
+            r.get("status") == "PASS"
+            for r in results
+        )
+
+        check_failed = sum(
+            r.get("status") == "FAIL"
+            for r in results
+        )
+
+        check_missing = sum(
+            r.get("status") == "MISSING"
+            for r in results
+        )
+
+        check_errors = sum(
+            r.get("status") == "ERROR"
+            for r in results
+        )
+
+        check_ok = (
+            check_failed == 0
+            and check_missing == 0
+            and check_errors == 0
+        )
+
+        icon = "✓" if check_ok else "×"
+
+        card_class = (
+            "check-pass"
+            if check_ok
+            else "check-fail"
+        )
+
+        check_percentage = (
+            round(
+                check_passed / check_total * 100,
+                1,
+            )
+            if check_total
+            else 0
+        )
+
+        check_cards.append(
+            f"""
+            <div class="check-card {card_class}">
+
+                <div class="check-icon">
+                    {icon}
+                </div>
+
+                <div class="check-info">
+
+                    <div class="check-title">
+                        {_esc(check_name)}
+                    </div>
+
+                    <div class="check-meta">
+                        {check_passed} of {check_total}
+                        records passed
+                    </div>
+
+                    <div class="progress-track">
+                        <div
+                            class="progress-fill"
+                            style="width:{check_percentage}%"
+                        ></div>
+                    </div>
+
+                </div>
+
+                <div class="check-percent">
+                    {check_percentage}%
+                </div>
+
+            </div>
+            """
+        )
+
+    # ========================================================
+    # FAILURE SECTIONS
+    # ========================================================
+
+    failure_sections = []
+
+    for check_name, results in all_results.items():
+
+        failures = [
+            r
+            for r in results
+            if r.get("status")
+            in {
+                "FAIL",
+                "MISSING",
+                "ERROR",
+            }
+        ]
+
+        if not failures:
+            continue
+
+        rows = []
+
+        for result in failures:
+
+            status = result.get(
+                "status",
+                "ERROR",
+            )
+
+            roll = result.get(
+                "roll_number"
+            )
+
+            student = result.get(
+                "student_name"
+            )
+
+            question = result.get(
+                "question"
+            )
+
+            chapter = result.get(
+                "chapter"
+            )
+
+            api_value = result.get(
+                "api_value"
+            )
+
+            excel_value = result.get(
+                "excel_value"
+            )
+
+            difference = result.get(
+                "difference"
+            )
+
+            identifier_parts = []
+
+            if roll is not None:
+
+                identifier_parts.append(
+                    f"Roll {roll}"
+                )
+
+            if student:
+
+                identifier_parts.append(
+                    _esc(student)
+                )
+
+            if question is not None:
+
+                identifier_parts.append(
+                    f"Q{_esc(question)}"
+                )
+
+            if chapter:
+
+                identifier_parts.append(
+                    _esc(chapter)
+                )
+
+            identifier = (
+                " · ".join(
+                    identifier_parts
+                )
+                if identifier_parts
+                else "Record"
+            )
+
+            if difference is None:
+
+                difference_text = "—"
+
+            else:
+
+                difference_text = (
+                    f"{difference:.2f}"
+                )
+
+            status_class = _status_class(
+                status
+            )
+
+            rows.append(
+                f"""
+                <tr>
+
+                    <td>
+                        <div class="record-name">
+                            {_esc(identifier)}
+                        </div>
+                    </td>
+
+                    <td class="number api-cell">
+                        {_format_value(api_value)}
+                    </td>
+
+                    <td class="number master-cell">
+                        {_format_value(excel_value)}
+                    </td>
+
+                    <td class="number difference-cell">
+                        {difference_text}
+                    </td>
+
+                    <td>
+                        <span class="status {status_class}">
+                            <span>
+                                {_status_icon(status)}
+                            </span>
+                            {_esc(status)}
+                        </span>
+                    </td>
+
+                    <td class="reason">
+                        {_esc(
+                            result.get(
+                                "message",
+                                "",
+                            )
+                        )}
+                    </td>
+
+                </tr>
+                """
+            )
+
+        failure_sections.append(
+            f"""
+            <section class="failure-section">
+
+                <div class="failure-heading">
+
+                    <div class="failure-heading-left">
+
+                        <div class="failure-alert">
+                            !
+                        </div>
+
+                        <div>
+
+                            <div class="failure-title">
+                                {_esc(check_name)}
+                            </div>
+
+                            <div class="failure-subtitle">
+                                {len(failures)}
+                                mismatch(es) detected
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div class="failure-count">
+                        {len(failures)}
+                    </div>
+
+                </div>
+
+                <div class="table-wrap">
+
+                    <table>
+
+                        <thead>
+
+                            <tr>
+                                <th>Record</th>
+                                <th>LOAM</th>
+                                <th>Master</th>
+                                <th>Difference</th>
+                                <th>Status</th>
+                                <th>Details</th>
+                            </tr>
+
+                        </thead>
+
+                        <tbody>
+                            {''.join(rows)}
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </section>
+            """
+        )
+
+    # ========================================================
+    # NO FAILURE STATE
+    # ========================================================
+
+    if not failure_sections:
+
+        failure_content = """
+        <div class="all-good">
+
+            <div class="all-good-icon">
+                ✓
+            </div>
+
+            <div>
+
+                <div class="all-good-title">
+                    Everything looks good
+                </div>
+
+                <div class="all-good-subtitle">
+                    All validation checks are within
+                    the configured tolerance.
+                </div>
+
+            </div>
+
+        </div>
+        """
+
+    else:
+
+        failure_content = "".join(
+            failure_sections
+        )
+
+    # ========================================================
+    # HTML
+    # ========================================================
+
+    return f"""
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<title>
+    LOAM · Validation Report
+</title>
+
+
+<style>
+
+/* ==========================================================
+   ROOT
+   ========================================================== */
+
+:root {{
+
+    --bg: #07090d;
+    --bg-2: #0b0e14;
+
+    --glass: rgba(255,255,255,.045);
+    --glass-strong: rgba(255,255,255,.065);
+
+    --border: rgba(255,255,255,.09);
+    --border-bright: rgba(255,255,255,.14);
+
+    --text: #f4f7fb;
+    --text-soft: #c6ccd7;
+    --muted: #7f8999;
+
+    --green: #4ade80;
+    --green-soft: rgba(74,222,128,.11);
+
+    --red: #fb7185;
+    --red-soft: rgba(251,113,133,.11);
+
+    --amber: #fbbf24;
+    --amber-soft: rgba(251,191,36,.11);
+
+    --blue: #60a5fa;
+
+    --radius: 22px;
+
+    --shadow:
+        0 20px 70px rgba(0,0,0,.38);
+
+}}
+
+
+/* ==========================================================
+   RESET
+   ========================================================== */
+
+* {{
+    box-sizing: border-box;
+}}
+
+html {{
+    scroll-behavior: smooth;
+}}
+
+body {{
+
+    margin: 0;
+
+    min-height: 100vh;
+
+    color: var(--text);
+
+    background:
+
+        radial-gradient(
+            circle at 10% 0%,
+            rgba(96,165,250,.10),
+            transparent 28%
+        ),
+
+        radial-gradient(
+            circle at 90% 10%,
+            rgba(74,222,128,.075),
+            transparent 26%
+        ),
+
+        radial-gradient(
+            circle at 50% 100%,
+            rgba(139,92,246,.07),
+            transparent 30%
+        ),
+
+        var(--bg);
+
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+
+    letter-spacing: -.01em;
+}}
+
+
+/* ==========================================================
+   BACKGROUND GRID
+   ========================================================== */
+
+body::before {{
+
+    content: "";
+
+    position: fixed;
+
+    inset: 0;
+
+    pointer-events: none;
+
+    opacity: .20;
+
+    background-image:
+
+        linear-gradient(
+            rgba(255,255,255,.025) 1px,
+            transparent 1px
+        ),
+
+        linear-gradient(
+            90deg,
+            rgba(255,255,255,.025) 1px,
+            transparent 1px
+        );
+
+    background-size: 42px 42px;
+
+    mask-image:
+        linear-gradient(
+            to bottom,
+            black,
+            transparent 80%
+        );
+
+}}
+
+
+/* ==========================================================
+   LAYOUT
+   ========================================================== */
+
+.container {{
+
+    width: min(
+        1240px,
+        calc(100% - 40px)
+    );
+
+    margin: 0 auto;
+
+    padding: 48px 0 80px;
+
+    position: relative;
+
+    z-index: 1;
+
+}}
+
+
+/* ==========================================================
+   GLASS
+   ========================================================== */
+
+.glass {{
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.075),
+            rgba(255,255,255,.025)
+        );
+
+    border:
+        1px solid var(--border);
+
+    box-shadow:
+        var(--shadow),
+        inset 0 1px 0 rgba(255,255,255,.045);
+
+    backdrop-filter:
+        blur(24px);
+
+    -webkit-backdrop-filter:
+        blur(24px);
+
+}}
+
+
+/* ==========================================================
+   HEADER
+   ========================================================== */
+
+.header {{
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: flex-start;
+
+    gap: 24px;
+
+    margin-bottom: 22px;
+
+    animation:
+        fadeUp .55s ease both;
+
+}}
+
+.brand {{
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 16px;
+
+}}
+
+.logo {{
+
+    width: 50px;
+
+    height: 50px;
+
+    display: grid;
+
+    place-items: center;
+
+    border-radius: 16px;
+
+    font-size: 19px;
+
+    font-weight: 900;
+
+    color: white;
+
+    background:
+
+        linear-gradient(
+            135deg,
+            #1f2937,
+            #111827
+        );
+
+    border:
+        1px solid rgba(255,255,255,.12);
+
+    box-shadow:
+        0 12px 35px rgba(0,0,0,.3),
+        inset 0 1px 0 rgba(255,255,255,.08);
+
+}}
+
+.logo::after {{
+
+    content: "";
+
+    position: absolute;
+
+    width: 8px;
+
+    height: 8px;
+
+    margin:
+        30px 0 0 30px;
+
+    border-radius: 50%;
+
+    background: var(--green);
+
+    box-shadow:
+        0 0 14px var(--green);
+
+}}
+
+h1 {{
+
+    margin: 0;
+
+    font-size: clamp(
+        26px,
+        4vw,
+        34px
+    );
+
+    font-weight: 850;
+
+    letter-spacing: -.055em;
+
+}}
+
+.subtitle {{
+
+    margin-top: 7px;
+
+    color: var(--muted);
+
+    font-size: 14px;
+
+}}
+
+.verdict {{
+
+    display: inline-flex;
+
+    align-items: center;
+
+    gap: 7px;
+
+    padding: 9px 14px;
+
+    border-radius: 999px;
+
+    font-size: 12px;
+
+    font-weight: 850;
+
+    letter-spacing: .05em;
+
+    border: 1px solid;
+
+}}
+
+.verdict::before {{
+
+    content: "";
+
+    width: 7px;
+
+    height: 7px;
+
+    border-radius: 50%;
+
+}}
+
+.verdict.pass {{
+
+    color: var(--green);
+
+    background: var(--green-soft);
+
+    border-color:
+        rgba(74,222,128,.20);
+
+}}
+
+.verdict.pass::before {{
+
+    background: var(--green);
+
+    box-shadow:
+        0 0 12px var(--green);
+
+}}
+
+.verdict.fail {{
+
+    color: var(--red);
+
+    background: var(--red-soft);
+
+    border-color:
+        rgba(251,113,133,.20);
+
+}}
+
+.verdict.fail::before {{
+
+    background: var(--red);
+
+    box-shadow:
+        0 0 12px var(--red);
+
+}}
+
+
+/* ==========================================================
+   META
+   ========================================================== */
+
+.meta {{
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, minmax(0,1fr));
+
+    gap: 1px;
+
+    margin-bottom: 16px;
+
+    border-radius: var(--radius);
+
+    overflow: hidden;
+
+    background:
+        var(--border);
+
+    border:
+        1px solid var(--border);
+
+    box-shadow: var(--shadow);
+
+    backdrop-filter: blur(24px);
+
+}}
+
+.meta-item {{
+
+    min-width: 0;
+
+    padding: 19px 20px;
+
+    background:
+        rgba(255,255,255,.035);
+
+}}
+
+.meta-item:hover {{
+
+    background:
+        rgba(255,255,255,.055);
+
+}}
+
+.meta-label {{
+
+    color: var(--muted);
+
+    font-size: 10px;
+
+    text-transform: uppercase;
+
+    letter-spacing: .12em;
+
+    font-weight: 800;
+
+}}
+
+.meta-value {{
+
+    margin-top: 7px;
+
+    color: var(--text-soft);
+
+    font-size: 14px;
+
+    font-weight: 700;
+
+    white-space: nowrap;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+
+}}
+
+
+/* ==========================================================
+   METRICS
+   ========================================================== */
+
+.metrics {{
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, minmax(0,1fr));
+
+    gap: 14px;
+
+    margin-bottom: 34px;
+
+}}
+
+.metric {{
+
+    position: relative;
+
+    overflow: hidden;
+
+    padding: 21px;
+
+    border-radius: var(--radius);
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.065),
+            rgba(255,255,255,.025)
+        );
+
+    border:
+        1px solid var(--border);
+
+    box-shadow:
+        var(--shadow),
+        inset 0 1px 0 rgba(255,255,255,.04);
+
+    backdrop-filter:
+        blur(22px);
+
+    animation:
+        fadeUp .55s ease both;
+
+}}
+
+.metric::after {{
+
+    content: "";
+
+    position: absolute;
+
+    width: 120px;
+
+    height: 120px;
+
+    right: -55px;
+
+    top: -55px;
+
+    border-radius: 50%;
+
+    background:
+        rgba(255,255,255,.025);
+
+    filter: blur(2px);
+
+}}
+
+.metric-label {{
+
+    color: var(--muted);
+
+    font-size: 10px;
+
+    text-transform: uppercase;
+
+    letter-spacing: .12em;
+
+    font-weight: 800;
+
+}}
+
+.metric-value {{
+
+    margin-top: 8px;
+
+    font-size: 34px;
+
+    line-height: 1;
+
+    font-weight: 900;
+
+    letter-spacing: -.055em;
+
+}}
+
+.metric.rate .metric-value {{
+    color: var(--blue);
+}}
+
+.metric.pass .metric-value {{
+    color: var(--green);
+}}
+
+.metric.fail .metric-value {{
+    color: var(--red);
+}}
+
+.metric.rate {{
+    border-color:
+        rgba(96,165,250,.18);
+}}
+
+.metric.pass {{
+    border-color:
+        rgba(74,222,128,.16);
+}}
+
+.metric.fail {{
+    border-color:
+        rgba(251,113,133,.18);
+}}
+
+
+/* ==========================================================
+   SECTION TITLE
+   ========================================================== */
+
+.section-title-row {{
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    gap: 15px;
+
+    margin:
+        0 0 14px;
+
+}}
+
+.section-title {{
+
+    font-size: 17px;
+
+    font-weight: 850;
+
+    letter-spacing: -.025em;
+
+}}
+
+.section-hint {{
+
+    color: var(--muted);
+
+    font-size: 12px;
+
+}}
+
+
+/* ==========================================================
+   CHECK GRID
+   ========================================================== */
+
+.check-grid {{
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(2, minmax(0,1fr));
+
+    gap: 13px;
+
+    margin-bottom: 36px;
+
+}}
+
+.check-card {{
+
+    min-width: 0;
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 14px;
+
+    padding: 17px;
+
+    border-radius: 19px;
+
+    background:
+        rgba(255,255,255,.035);
+
+    border:
+        1px solid var(--border);
+
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.035);
+
+    backdrop-filter:
+        blur(20px);
+
+    transition:
+        transform .2s ease,
+        background .2s ease,
+        border-color .2s ease;
+
+}}
+
+.check-card:hover {{
+
+    transform:
+        translateY(-2px);
+
+    background:
+        rgba(255,255,255,.055);
+
+    border-color:
+        var(--border-bright);
+
+}}
+
+.check-pass {{
+    border-left:
+        3px solid var(--green);
+}}
+
+.check-fail {{
+    border-left:
+        3px solid var(--red);
+}}
+
+.check-icon {{
+
+    flex:
+        0 0 auto;
+
+    width: 38px;
+
+    height: 38px;
+
+    display: grid;
+
+    place-items: center;
+
+    border-radius: 12px;
+
+    font-size: 16px;
+
+    font-weight: 900;
+
+}}
+
+.check-pass .check-icon {{
+
+    color: var(--green);
+
+    background:
+        var(--green-soft);
+
+    box-shadow:
+        0 0 24px rgba(74,222,128,.06);
+
+}}
+
+.check-fail .check-icon {{
+
+    color: var(--red);
+
+    background:
+        var(--red-soft);
+
+}}
+
+.check-info {{
+    flex: 1;
+    min-width: 0;
+}}
+
+.check-title {{
+
+    font-size: 13px;
+
+    font-weight: 800;
+
+    white-space: nowrap;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+
+}}
+
+.check-meta {{
+
+    margin-top: 4px;
+
+    color: var(--muted);
+
+    font-size: 11px;
+
+}}
+
+.check-percent {{
+
+    flex:
+        0 0 auto;
+
+    font-size: 12px;
+
+    font-weight: 850;
+
+    color: var(--text-soft);
+
+}}
+
+.progress-track {{
+
+    height: 4px;
+
+    margin-top: 9px;
+
+    border-radius: 99px;
+
+    overflow: hidden;
+
+    background:
+        rgba(255,255,255,.07);
+
+}}
+
+.progress-fill {{
+
+    height: 100%;
+
+    border-radius: inherit;
+
+    background:
+        var(--green);
+
+    box-shadow:
+        0 0 10px rgba(74,222,128,.25);
+
+}}
+
+
+/* ==========================================================
+   FAILURE SECTION
+   ========================================================== */
+
+.failure-section {{
+
+    margin-bottom: 16px;
+
+    overflow: hidden;
+
+    border-radius: var(--radius);
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.055),
+            rgba(255,255,255,.025)
+        );
+
+    border:
+        1px solid rgba(251,113,133,.13);
+
+    box-shadow:
+        var(--shadow);
+
+    backdrop-filter:
+        blur(24px);
+
+}}
+
+.failure-heading {{
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    gap: 16px;
+
+    padding: 18px 20px;
+
+    border-bottom:
+        1px solid var(--border);
+
+}}
+
+.failure-heading-left {{
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 13px;
+
+}}
+
+.failure-alert {{
+
+    width: 36px;
+
+    height: 36px;
+
+    display: grid;
+
+    place-items: center;
+
+    border-radius: 11px;
+
+    color: var(--red);
+
+    background:
+        var(--red-soft);
+
+    font-weight: 900;
+
+}}
+
+.failure-title {{
+
+    font-size: 14px;
+
+    font-weight: 850;
+
+}}
+
+.failure-subtitle {{
+
+    margin-top: 4px;
+
+    color: var(--muted);
+
+    font-size: 11px;
+
+}}
+
+.failure-count {{
+
+    min-width: 34px;
+
+    height: 28px;
+
+    padding: 0 9px;
+
+    display: grid;
+
+    place-items: center;
+
+    border-radius: 999px;
+
+    color: var(--red);
+
+    background:
+        var(--red-soft);
+
+    font-size: 11px;
+
+    font-weight: 900;
+
+}}
+
+
+/* ==========================================================
+   TABLE
+   ========================================================== */
+
+.table-wrap {{
+
+    overflow-x: auto;
+
+}}
+
+table {{
+
+    width: 100%;
+
+    border-collapse: collapse;
+
+}}
+
+thead {{
+
+    background:
+        rgba(0,0,0,.17);
+
+}}
+
+th {{
+
+    text-align: left;
+
+    padding: 12px 15px;
+
+    color: var(--muted);
+
+    font-size: 9px;
+
+    text-transform: uppercase;
+
+    letter-spacing: .1em;
+
+    font-weight: 850;
+
+    white-space: nowrap;
+
+}}
+
+td {{
+
+    padding: 14px 15px;
+
+    border-top:
+        1px solid rgba(255,255,255,.055);
+
+    color: var(--text-soft);
+
+    font-size: 12px;
+
+}}
+
+tbody tr {{
+
+    transition:
+        background .15s ease;
+
+}}
+
+tbody tr:hover {{
+
+    background:
+        rgba(255,255,255,.025);
+
+}}
+
+.record-name {{
+
+    color: var(--text);
+
+    font-weight: 700;
+
+}}
+
+.number {{
+
+    font-variant-numeric:
+        tabular-nums;
+
+    font-weight: 750;
+
+}}
+
+.api-cell {{
+    color: #93c5fd;
+}}
+
+.master-cell {{
+    color: #c4b5fd;
+}}
+
+.difference-cell {{
+    color: var(--red);
+}}
+
+.reason {{
+
+    min-width: 230px;
+
+    color: var(--muted);
+
+    line-height: 1.45;
+
+}}
+
+
+/* ==========================================================
+   STATUS
+   ========================================================== */
+
+.status {{
+
+    display: inline-flex;
+
+    align-items: center;
+
+    gap: 5px;
+
+    padding: 5px 9px;
+
+    border-radius: 999px;
+
+    font-size: 9px;
+
+    font-weight: 900;
+
+    letter-spacing: .07em;
+
+    border: 1px solid;
+
+}}
+
+.status.pass {{
+
+    color: var(--green);
+
+    background:
+        var(--green-soft);
+
+    border-color:
+        rgba(74,222,128,.16);
+
+}}
+
+.status.fail {{
+
+    color: var(--red);
+
+    background:
+        var(--red-soft);
+
+    border-color:
+        rgba(251,113,133,.16);
+
+}}
+
+.status.missing {{
+
+    color: var(--amber);
+
+    background:
+        var(--amber-soft);
+
+    border-color:
+        rgba(251,191,36,.16);
+
+}}
+
+.status.error {{
+
+    color: var(--red);
+
+    background:
+        var(--red-soft);
+
+    border-color:
+        rgba(251,113,133,.16);
+
+}}
+
+
+/* ==========================================================
+   ALL GOOD
+   ========================================================== */
+
+.all-good {{
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 15px;
+
+    padding: 23px;
+
+    border-radius: var(--radius);
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(74,222,128,.08),
+            rgba(74,222,128,.025)
+        );
+
+    border:
+        1px solid rgba(74,222,128,.16);
+
+    box-shadow:
+        var(--shadow);
+
+}}
+
+.all-good-icon {{
+
+    width: 43px;
+
+    height: 43px;
+
+    flex: 0 0 auto;
+
+    display: grid;
+
+    place-items: center;
+
+    border-radius: 13px;
+
+    color: var(--green);
+
+    background:
+        var(--green-soft);
+
+    font-weight: 900;
+
+    font-size: 18px;
+
+}}
+
+.all-good-title {{
+
+    font-weight: 850;
+
+    font-size: 14px;
+
+}}
+
+.all-good-subtitle {{
+
+    margin-top: 4px;
+
+    color: var(--muted);
+
+    font-size: 12px;
+
+}}
+
+
+/* ==========================================================
+   FOOTER
+   ========================================================== */
+
+.footer {{
+
+    margin-top: 34px;
+
+    text-align: center;
+
+    color: var(--muted);
+
+    font-size: 11px;
+
+}}
+
+
+/* ==========================================================
+   ANIMATION
+   ========================================================== */
+
+@keyframes fadeUp {{
+
+    from {{
+        opacity: 0;
+        transform: translateY(8px);
+    }}
+
+    to {{
+        opacity: 1;
+        transform: translateY(0);
+    }}
+
+}}
+
+
+/* ==========================================================
+   RESPONSIVE
+   ========================================================== */
+
+@media (max-width: 900px) {{
+
+    .meta,
+    .metrics {{
+        grid-template-columns:
+            repeat(2, minmax(0,1fr));
+    }}
+
+}}
+
+@media (max-width: 700px) {{
+
+    .container {{
+        width:
+            min(
+                calc(100% - 24px),
+                1240px
+            );
+
+        padding-top: 28px;
+    }}
+
+    .header {{
+        flex-direction: column;
+    }}
+
+    .meta,
+    .metrics,
+    .check-grid {{
+        grid-template-columns: 1fr;
+    }}
+
+    .section-hint {{
+        display: none;
+    }}
+
+    th,
+    td {{
+        padding:
+            11px 10px;
+    }}
+
+}}
+
+</style>
+
+</head>
+
+
+<body>
+
+<div class="container">
+
+
+    <!-- =====================================================
+         HEADER
+         ================================================== -->
+
+    <header class="header">
+
+        <div class="brand">
+
+            <div class="logo">
+                L
+            </div>
+
+            <div>
+
+                <h1>
+                    LOAM Data Validation
+                </h1>
+
+                <div class="subtitle">
+                    {_esc(subject)}
+                    ·
+                    Grade {_esc(grade)}
+                    ·
+                    Section {_esc(section)}
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="verdict {_esc(
+            overall_status.lower()
+        )}">
+
+            {_esc(overall_status)}
+
+        </div>
+
+    </header>
+
+
+    <!-- =====================================================
+         META
+         ================================================== -->
+
+    <div class="meta">
+
+        <div class="meta-item">
+
+            <div class="meta-label">
+                Subject
+            </div>
+
+            <div class="meta-value">
+                {_esc(subject)}
+            </div>
+
+        </div>
+
+
+        <div class="meta-item">
+
+            <div class="meta-label">
+                Grade · Section
+            </div>
+
+            <div class="meta-value">
+                {_esc(grade_section)}
+            </div>
+
+        </div>
+
+
+        <div class="meta-item">
+
+            <div class="meta-label">
+                Master Excel
+            </div>
+
+            <div class="meta-value">
+                {_esc(
+                    Path(master_excel).name
+                )}
+            </div>
+
+        </div>
+
+
+        <div class="meta-item">
+
+            <div class="meta-label">
+                Generated
+            </div>
+
+            <div class="meta-value">
+                {_esc(generated_at)}
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         METRICS
+         ================================================== -->
+
+    <div class="metrics">
+
+        <div class="metric rate">
+
+            <div class="metric-label">
+                Pass Rate
+            </div>
+
+            <div class="metric-value">
+                {pass_rate:.2f}%
+            </div>
+
+        </div>
+
+
+        <div class="metric pass">
+
+            <div class="metric-label">
+                Passed
+            </div>
+
+            <div class="metric-value">
+                {passed}
+            </div>
+
+        </div>
+
+
+        <div class="metric fail">
+
+            <div class="metric-label">
+                Failed
+            </div>
+
+            <div class="metric-value">
+                {failed}
+            </div>
+
+        </div>
+
+
+        <div class="metric">
+
+            <div class="metric-label">
+                Total Records
+            </div>
+
+            <div class="metric-value">
+                {total}
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         CHECKS
+         ================================================== -->
+
+    <div class="section-title-row">
+
+        <div class="section-title">
+            Validation Checks
+        </div>
+
+        <div class="section-hint">
+            Tolerance ±{tolerance}
+        </div>
+
+    </div>
+
+
+    <div class="check-grid">
+
+        {''.join(check_cards)}
+
+    </div>
+
+
+    <!-- =====================================================
+         FAILURES
+         ================================================== -->
+
+    <div class="section-title-row">
+
+        <div class="section-title">
+            Mismatches & Failure Details
+        </div>
+
+        <div class="section-hint">
+            LOAM vs Master
+        </div>
+
+    </div>
+
+
+    {failure_content}
+
+
+    <!-- =====================================================
+         FOOTER
+         ================================================== -->
+
+    <div class="footer">
+
+        LOAM Data Validation
+        ·
+        Tolerance ±{tolerance}
+        ·
+        Generated { _esc(generated_at) }
+
+    </div>
+
+
+</div>
+
+</body>
+
+</html>
+"""
+
+
+# ============================================================
+# WRITE + OPEN REPORT
+# ============================================================
+
+def write_and_open_report(
+    *,
+    subject: str,
+    grade_section: str,
+    master_excel: str,
+    tolerance: float,
+    all_results: dict[str, list[dict]],
+    output_path: str = (
+        "reports/loam_validation_report.html"
+    ),
+) -> Path:
+
+    path = Path(output_path)
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    html_content = build_html_report(
+        subject=subject,
+        grade_section=grade_section,
+        master_excel=master_excel,
+        tolerance=tolerance,
+        all_results=all_results,
+    )
+
+    path.write_text(
+        html_content,
+        encoding="utf-8",
+    )
+
+    # Open report in a new browser tab/window.
+    webbrowser.open(
+        path.resolve().as_uri(),
+        new=1,
+    )
+
+    return path
