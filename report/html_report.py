@@ -2773,6 +2773,32 @@ tbody tr:hover {{
 
 }}
 
+.download-report-btn {{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    background: rgba(255,255,255,.06);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: .2s ease;
+}}
+
+.download-report-btn:hover {{
+    background: rgba(255,255,255,.12);
+    transform: translateY(-1px);
+}}
+
+.report-actions {{
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+}}
+
 </style>
 
 </head>
@@ -2781,6 +2807,12 @@ tbody tr:hover {{
 <body>
 
 <div class="container">
+
+    <div class="report-actions">
+        <button class="download-report-btn" onclick="downloadReport()">
+            ↓ Download Report
+        </button>
+    </div>
 
 
     <!-- =====================================================
@@ -3007,6 +3039,28 @@ tbody tr:hover {{
 
 
 </div>
+
+<script>
+function downloadReport() {{
+    const html = '<!DOCTYPE html>\\n' + document.documentElement.outerHTML;
+
+    const blob = new Blob([html], {{
+        type: 'text/html;charset=utf-8'
+    }});
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+
+    a.href = url;
+    a.download = 'LOAM_Validation_Report.html';
+
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    URL.revokeObjectURL(url);
+}}
+</script>
 
 </body>
 

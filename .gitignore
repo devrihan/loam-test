@@ -4,3 +4,4 @@ __pycache__/
 .env
 validation_result.json
 master_data/
+reports/
