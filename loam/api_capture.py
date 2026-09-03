@@ -9,7 +9,40 @@ from urllib.parse import parse_qs, unquote, urlparse
 from playwright.sync_api import Response
 
 EXAM_API_IDS = {
-    ("Accountancy", "Unit Test 1 2026-27"): "11_ACCOUNTANCY_Unit-Test -1_26_27",
+    # UNIT TEST-1--------------------------------------------------------------------------------------
+    # Class 11
+    ("11", "Accountancy", "Unit Test 1 2026-27"): "11_ACCOUNTANCY_Unit-Test -1_26_27",
+    ("11", "Applied Mathematics", "Unit Test 1 2026-27"):"11_Applied_Mathematics_Unit-Test -1_26_27",
+    ("11", "Biology", "Unit Test 1 2026-27"):"11_Biology_Unit-Test -1_26_27",
+    ("11", "Chemistry", "Unit Test 1 2026-27"):"11_Chemistry_Unit-Test -1_26_27",
+    ("11", "Economics", "Unit Test 1 2026-27"):"11_Economics_Unit-Test -1_26_27",
+    ("11", "Mathematics", "Unit Test 1 2026-27"):"11_Mathematics_Unit-Test -1_26_27",
+    ("11", "Physics", "Unit Test 1 2026-27"): "11_Physics_Unit-Test -1_26_27",
+    ("11", "Science", "Unit Test 1 2026-27"): "11_Science_Unit-Test -1_26_27",
+    ("11", "Social Science", "Unit Test 1 2026-27"):"11_Social+Science_Unit-Test -1_26_27",
+
+    #CLASS 10
+    ("10", "Mathematics", "Unit Test 1 2026-27"): "10_MATHEMATICS_Unit-Test -1_26_27",
+    ("10", "Science", "Unit Test 1 2026-27"): "10_SCIENCE_Unit-Test -1_26_27",
+    ("10", "Social Science", "Unit Test 1 2026-27"): "10_Social+Science_Unit-Test -1_26_27",
+
+    #CLASS 9
+    ("9", "Mathematics", "Unit Test 1 2026-27"): "9_Mathematics_Unit-Test -1_26_27",
+    ("9", "Science", "Unit Test 1 2026-27"): "9_Science_Unit-Test -1_26_27",
+    ("9", "Social Science", "Unit Test 1 2026-27"): "9_Social+Science_Unit-Test -1_26_27",
+
+    #CLASS 12
+    ("12", "Accountancy", "Unit Test 1 2026-27"): "12_ACCOUNTANCY_Unit-Test -1_26_27",
+    ("12", "Applied Mathematics", "Unit Test 1 2026-27"):"12_Applied_Mathematics_Unit-Test -1_26_27",
+    ("12", "Biology", "Unit Test 1 2026-27"):"12_Biology_Unit-Test -1_26_27",
+    ("12", "Chemistry", "Unit Test 1 2026-27"):"12_Chemistry_Unit-Test -1_26_27",
+    ("12", "Economics", "Unit Test 1 2026-27"):"12_Economics_Unit-Test -1_26_27",
+    ("12", "Mathematics", "Unit Test 1 2026-27"):"12_Mathematics_Unit-Test -1_26_27",
+    ("12", "Physics", "Unit Test 1 2026-27"): "12_Physics_Unit-Test -1_26_27",
+    ("12", "Science", "Unit Test 1 2026-27"): "12_Science_Unit-Test -1_26_27",
+    ("12", "Social Science", "Unit Test 1 2026-27"):"12_Social+Science_Unit-Test -1_26_27",
+
+
 }
 
 
@@ -37,18 +70,30 @@ class ApiCollector:
 
         # Keep responses until we know which exam they belong to.
 
-    def set_exam(self, subject, exam):
-        self.expected_exam_id = EXAM_API_IDS.get(
-            (str(subject).strip(), str(exam).strip())
+    def set_exam(
+        self,
+        grade: str,
+        subject: str,
+        exam: str,
+    ) -> None:
+
+        key = (
+            str(grade).strip(),
+            str(subject).strip(),
+            str(exam).strip(),
         )
+
+        self.expected_exam_id = EXAM_API_IDS.get(key)
 
         if not self.expected_exam_id:
             raise ValueError(
                 f"No API exam ID configured for: "
-                f"{subject} / {exam}"
+                f"{grade} / {subject} / {exam}"
             )
 
-        print(f"✓ API exam ID → {self.expected_exam_id}")
+        print(
+            f"✓ API exam ID → {self.expected_exam_id}"
+        )
 
     def clear(self):
         self.chapter_stats = None

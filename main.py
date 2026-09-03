@@ -283,7 +283,7 @@ def validate_one(
     # Absolutely nothing from previous grade-section should survive.
     collector.clear()
     collector.disable()
-    collector.set_exam(subject, exam)
+    collector.set_exam(grade, subject, exam)
 
     print(f"Selecting Grade-Sec → {grade_section}")
 
@@ -619,9 +619,36 @@ def _build_batch_report(batch_results: list[dict], output_path: str) -> Path:
     rows = []
     for item in batch_results:
         s = item["summary"]
-        status = "PASS" if s["failed"] == 0 and s["errors"] == 0 and s["missing"] == 0 else "FAIL"
+
+        status = (
+            "PASS"
+            if s["failed"] == 0
+            and s["errors"] == 0
+            and s["missing"] == 0
+            else "FAIL"
+        )
+
         cls = "pass" if status == "PASS" else "fail"
-        report_link = Path(item["report"]).relative_to("reports").as_posix()
+
+        report_value = str(item.get("report") or "").strip()
+
+        if report_value:
+            try:
+                report_link = (
+                    Path(report_value)
+                    .relative_to("reports")
+                    .as_posix()
+                )
+            except ValueError:
+                report_link = Path(report_value).as_posix()
+
+            report_cell = (
+                f'<a href="{html.escape(report_link)}">'
+                f'View report</a>'
+            )
+        else:
+            report_cell = "—"
+        
         rows.append(
             f"""
             <tr>
@@ -634,7 +661,7 @@ def _build_batch_report(batch_results: list[dict], output_path: str) -> Path:
               <td>{s["errors"]}</td>
               <td>{s["pass_rate"]}%</td>
               <td><span class="badge {cls}">{status}</span></td>
-              <td><a href="{html.escape(report_link)}">View report</a></td>
+              <td>{report_cell}</td>
             </tr>
             """
         )
@@ -1110,13 +1137,16 @@ def run_batch(args, settings: Settings) -> None:
         print("\n[LOGIN]")
         nav.login()
 
-        # Discover subjects once from LOAM.
-        subjects = nav.get_subjects()
+        # Go to Chapter before accessing dashboard filters.
+        nav.go_to_chapter()
+        nav.wait_for_filters()
+
+        # If subject was provided, use it directly.
+        # No need to discover subjects from the dropdown.
         if subject_filter:
-            subjects = [
-                s for s in subjects
-                if s.casefold() == subject_filter.casefold()
-            ]
+            subjects = [subject_filter]
+        else:
+            subjects = nav.get_subjects()
 
         if not subjects:
             raise RuntimeError("No matching subjects found in LOAM.")
@@ -1145,8 +1175,15 @@ def run_batch(args, settings: Settings) -> None:
 
             for subject in subjects:
                 try:
+                    # Always start from Chapter for each subject.
+                    nav.go_to_chapter()
+                    nav.wait_for_filters()
+
                     nav.select_subject(subject)
+                    nav.select_exam(args.exam)
+
                     available_sections = nav.get_grade_sections()
+
                 except Exception as exc:
                     print(
                         f"⚠ Could not load sections for {subject}: {exc}"
@@ -1163,8 +1200,23 @@ def run_batch(args, settings: Settings) -> None:
                         gs for gs in sections
                         if gs.casefold() == grade_section_filter.casefold()
                     ]
+                # TEMPORARY: test only the first section
+                sections = sections[:1]
 
-                for grade_section in sections:
+                for section_index, grade_section in enumerate(sections):
+
+    # After the previous section, the browser is on Questions.
+    # Return to Chapter before selecting the next Grade-Section.
+                    if section_index > 0:
+                        print("\n[RETURN TO CHAPTER]")
+                        collector.disable()
+
+                        nav.go_to_chapter()
+                        nav.wait_for_filters()
+
+                        nav.select_subject(subject)
+                        nav.select_exam(args.exam)
+
                     safe_name = re.sub(
                         r"[^A-Za-z0-9_.-]+",
                         "_",
@@ -1176,6 +1228,7 @@ def run_batch(args, settings: Settings) -> None:
                         / "batch"
                         / f"{safe_name}.html"
                     )
+
                     json_path = (
                         Path("reports")
                         / "batch"
@@ -1197,6 +1250,39 @@ def run_batch(args, settings: Settings) -> None:
                             json_path=str(json_path),
                         )
 
+                        from report.html_report import build_html_report
+
+                        report_path.parent.mkdir(
+                            parents=True,
+                            exist_ok=True,
+                        )
+
+                        report_path.write_text(
+                            build_html_report(
+                                subject=subject,
+                                exam=args.exam,
+                                grade_section=grade_section,
+                                master_excel=str(workbook_path),
+                                tolerance=settings.numeric_tolerance,
+                                all_results={
+                                    grade_section: {
+                                        "summary": summary,
+                                        "results": all_results,
+                                    }
+                                },
+                            ),
+                            encoding="utf-8",
+                        )
+
+                        _save_json_report(
+                            path=str(json_path),
+                            subject=subject,
+                            grade_section=grade_section,
+                            master_excel=str(workbook_path),
+                            tolerance=settings.numeric_tolerance,
+                            all_results=all_results,
+                        )
+
                         batch_results.append(
                             {
                                 "grade_section": grade_section,
@@ -1211,7 +1297,8 @@ def run_batch(args, settings: Settings) -> None:
 
                     except Exception as exc:
                         print(
-                            f"\n⚠ ERROR — {subject} / {grade_section}: {exc}"
+                            f"\n⚠ ERROR — "
+                            f"{subject} / {grade_section}: {exc}"
                         )
 
                         batch_results.append(
@@ -1230,6 +1317,7 @@ def run_batch(args, settings: Settings) -> None:
                                 "report": "",
                                 "json": "",
                                 "results": {},
+                                "error": str(exc),
                             }
                         )
 
