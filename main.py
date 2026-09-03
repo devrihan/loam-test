@@ -23,6 +23,9 @@ from validation.checks import (
     check_question_stats,
     check_student_chapter_stats,
     summarize_results,
+    check_chapter_max_marks,
+    check_question_max_marks,
+    check_question_mapping,
 )
 
 from report.html_report import write_and_open_report
@@ -243,6 +246,7 @@ def validate_one(
     master: MasterWorkbook,
     subject: str,
     grade_section: str,
+    exam: str,
     settings: Settings,
     nav: LoamNavigator,
     page,
@@ -251,7 +255,7 @@ def validate_one(
     report_path: str | None = None,
     json_path: str | None = None,
 ) -> tuple[dict[str, list[dict]], dict]:
-    """Run the existing five checks for one subject + grade-section."""
+    """Validate one already-selected Subject + Exam + Grade-Section."""
 
     try:
         grade, section = grade_section.split("-", 1)
@@ -260,104 +264,134 @@ def validate_one(
             f"Grade-Section must look like 11-C, got: {grade_section}"
         )
 
-    # Prevent API responses from a previous combination from being reused.
-    collector.clear()
-
     print("\n" + "=" * 70)
     print("VALIDATING")
     print("=" * 70)
     print(f"Subject       : {subject}")
     print(f"Grade-Section : {grade_section}")
-    print(f"Master Excel  : {master.path if hasattr(master, 'path') else 'selected workbook'}")
+    print(
+        f"Master Excel  : "
+        f"{master.path if hasattr(master, 'path') else 'selected workbook'}"
+    )
     print("=" * 70)
 
     # ========================================================
-    # SUBJECT
+    # 1. GRADE-SECTION + CHAPTER-STATS
     # ========================================================
-    print("\n[1] SUBJECT")
-    nav.select_subject(subject)
+    print("\n[1] GRADE-SECTION")
 
-    # ========================================================
-    # GRADE SECTION
-    # ========================================================
-    print("\n[2] GRADE-SECTION")
-    nav.select_grade_section(grade_section)
+    # Absolutely nothing from previous grade-section should survive.
+    collector.clear()
+    collector.disable()
+    collector.set_exam(subject, exam)
 
-    # ========================================================
-    # CHAPTER
-    # ========================================================
-    print("\n[3] CHAPTER")
-    nav.go_to_chapter()
-    page.wait_for_timeout(3000)
+    print(f"Selecting Grade-Sec → {grade_section}")
 
-    chapter_stats = collector.get_chapter_stats()
-    if chapter_stats is None:
-        raise RuntimeError(
-            "chapter-stats API was not captured after opening Chapter tab."
-        )
+    # The Grade-Sec selection itself triggers chapter-stats.
+    # We capture ONLY that specific response here.
+    with page.expect_response(
+        lambda response: (
+            "/api/answer-crops/chapter-stats"
+            in response.url
+            and response.status == 200
+        ),
+        timeout=15000,
+    ) as chapter_response_info:
+        nav.select_grade_section(grade_section)
+
+    chapter_response = chapter_response_info.value
+    chapter_stats = chapter_response.json()
+
+    # Store it in the collector so the rest of the code has one source.
+    collector.chapter_stats = chapter_stats
+
+    print(f"✓ Grade-Sec selected → {grade_section}")
     print("✓ chapter-stats API captured")
 
     # ========================================================
-    # STUDENTS
+    # 2. ENABLE API CAPTURE
     # ========================================================
-    print("\n[4] STUDENTS")
+    #
+    # From this point onward we WANT the APIs from Students
+    # and Questions.
+    #
+    collector.enable()
+
+
+    print("\n[2] STUDENTS")
+
+    collector.enable()
+
     nav.go_to_students()
-    page.wait_for_timeout(3000)
+
+    page.wait_for_timeout(2500)
 
     roster = collector.get_roster()
     student_chapter_stats = collector.get_student_chapter_stats()
-
-    if roster is None:
-        raise RuntimeError("roster API was not captured.")
-    if student_chapter_stats is None:
-        raise RuntimeError("student-chapter-stats API was not captured.")
 
     print("✓ roster API captured")
     print("✓ student-chapter-stats API captured")
 
     # ========================================================
-    # QUESTIONS
+    # 4. QUESTIONS
     # ========================================================
-    print("\n[5] QUESTIONS")
+    print("\n[3] QUESTIONS")
+
+    collector.enable()
+
     nav.go_to_questions()
-    page.wait_for_timeout(3000)
+
+    page.wait_for_timeout(2500)
 
     question_stats = collector.get_question_stats()
-    if question_stats is None:
-        raise RuntimeError("question-stats API was not captured.")
+    questions = collector.get_questions()
 
     print("✓ question-stats API captured")
+    print("✓ /api/questions API captured")
 
     # ========================================================
-    # API CAPTURE
+    # 5. API CAPTURE VERIFICATION
     # ========================================================
-    print("\n[6] API CAPTURE")
+    print("\n[4] API CAPTURE")
+
     missing = collector.missing_apis()
 
     if missing:
         print("⚠ Missing API responses:")
+
         for api in missing:
             print(f"  - {api}")
-        raise RuntimeError("Not all required APIs were captured.")
 
-    print("✓ All four required APIs captured")
+        raise RuntimeError(
+            "Not all required APIs were captured."
+        )
+
+    print("✓ All required APIs captured")
 
     # ========================================================
-    # API DATA
+    # 6. API DATA
     # ========================================================
-    print("\n[7] API DATA")
+    print("\n[5] API DATA")
+
     print(f"Students              : {len(roster)}")
     print(f"Chapters              : {len(chapter_stats)}")
-    print(f"Student-Chapter rows  : {len(student_chapter_stats)}")
+    print(
+        f"Student-Chapter rows  : "
+        f"{len(student_chapter_stats)}"
+    )
     print(f"Questions             : {len(question_stats)}")
+    print(f"Question details      : {len(questions)}")
 
     # ========================================================
-    # VALIDATION
+    # 7. VALIDATION
     # ========================================================
-    print("\n[8] VALIDATION")
+    print("\n[6] VALIDATION")
+
     all_results = {}
 
-    # 1. Individual Student Marks
+    # --------------------------------------------------------
+    # CHECK 1 — Individual Student Marks
+    # --------------------------------------------------------
     student_marks_results = check_student_marks(
         roster=roster,
         master_df=master.student_marks(),
@@ -365,11 +399,22 @@ def validate_one(
         section=section,
         tolerance=settings.numeric_tolerance,
     )
-    all_results["Individual Student Marks"] = student_marks_results
-    print_check_summary("1. Individual Student Marks", student_marks_results)
-    print_failures("1. Individual Student Marks", student_marks_results)
 
-    # 2. Section Average
+    all_results["Individual Student Marks"] = student_marks_results
+
+    print_check_summary(
+        "1. Individual Student Marks",
+        student_marks_results,
+    )
+
+    print_failures(
+        "1. Individual Student Marks",
+        student_marks_results,
+    )
+
+    # --------------------------------------------------------
+    # CHECK 2 — Section Average
+    # --------------------------------------------------------
     section_average_result = check_section_average(
         roster=roster,
         master_df=master.section_avg_by_subject(),
@@ -377,11 +422,24 @@ def validate_one(
         section=section,
         tolerance=settings.numeric_tolerance,
     )
-    all_results["Section Average"] = [section_average_result]
-    print_check_summary("2. Section Average", [section_average_result])
-    print_failures("2. Section Average", [section_average_result])
 
-    # 3. Chapter-wise Section Average
+    all_results["Section Average"] = [
+        section_average_result
+    ]
+
+    print_check_summary(
+        "2. Section Average",
+        [section_average_result],
+    )
+
+    print_failures(
+        "2. Section Average",
+        [section_average_result],
+    )
+
+    # --------------------------------------------------------
+    # CHECK 3 — Chapter-wise Section Average
+    # --------------------------------------------------------
     chapter_average_results = check_chapter_average(
         chapter_stats=chapter_stats,
         master_df=master.chapter_avg_by_section(),
@@ -389,17 +447,47 @@ def validate_one(
         section=section,
         tolerance=settings.numeric_tolerance,
     )
-    all_results["Chapter-wise Section Average"] = chapter_average_results
+
+    all_results[
+        "Chapter-wise Section Average"
+    ] = chapter_average_results
+
     print_check_summary(
         "3. Chapter-wise Section Average",
         chapter_average_results,
     )
+
     print_failures(
         "3. Chapter-wise Section Average",
         chapter_average_results,
     )
 
-    # 5. Question-wise Average
+    # --------------------------------------------------------
+    # CHECK 4 — Chapter Max Marks
+    # --------------------------------------------------------
+    chapter_max_results = check_chapter_max_marks(
+        chapter_stats=chapter_stats,
+        master_df=master.chapter_avg_by_section(),
+        subject=subject,
+        section=section,
+        tolerance=settings.numeric_tolerance,
+    )
+
+    all_results["Chapter Max Marks"] = chapter_max_results
+
+    print_check_summary(
+        "4. Chapter Max Marks",
+        chapter_max_results,
+    )
+
+    print_failures(
+        "4. Chapter Max Marks",
+        chapter_max_results,
+    )
+
+    # --------------------------------------------------------
+    # CHECK 5 — Question-wise Average
+    # --------------------------------------------------------
     question_results = check_question_stats(
         question_stats=question_stats,
         master_df=master.question_perf_by_section(),
@@ -407,11 +495,45 @@ def validate_one(
         section=section,
         tolerance=settings.numeric_tolerance,
     )
-    all_results["Question-wise Average"] = question_results
-    print_check_summary("5. Question-wise Average", question_results)
-    print_failures("5. Question-wise Average", question_results)
 
-    # 6. Student Chapter-wise Average
+    all_results["Question-wise Average"] = question_results
+
+    print_check_summary(
+        "5. Question-wise Average",
+        question_results,
+    )
+
+    print_failures(
+        "5. Question-wise Average",
+        question_results,
+    )
+
+    # --------------------------------------------------------
+    # CHECK 6 — Question Max Marks
+    # --------------------------------------------------------
+    question_max_results = check_question_max_marks(
+        question_stats=question_stats,
+        master_df=master.question_perf_by_section(),
+        subject=subject,
+        section=section,
+        tolerance=settings.numeric_tolerance,
+    )
+
+    all_results["Question Max Marks"] = question_max_results
+
+    print_check_summary(
+        "6. Question Max Marks",
+        question_max_results,
+    )
+
+    print_failures(
+        "6. Question Max Marks",
+        question_max_results,
+    )
+
+    # --------------------------------------------------------
+    # CHECK 7 — Student Chapter-wise Average
+    # --------------------------------------------------------
     student_chapter_results = check_student_chapter_stats(
         student_chapter_stats=student_chapter_stats,
         master_df=master.data_chapter(),
@@ -419,72 +541,54 @@ def validate_one(
         section=section,
         tolerance=settings.numeric_tolerance,
     )
-    all_results["Student Chapter-wise Average"] = student_chapter_results
+
+    all_results[
+        "Student Chapter-wise Average"
+    ] = student_chapter_results
+
     print_check_summary(
-        "6. Student Chapter-wise Average",
-        student_chapter_results,
-    )
-    print_failures(
-        "6. Student Chapter-wise Average",
+        "7. Student Chapter-wise Average",
         student_chapter_results,
     )
 
+    print_failures(
+        "7. Student Chapter-wise Average",
+        student_chapter_results,
+    )
+
+    # --------------------------------------------------------
+    # CHECK 8 — Question Mapping
+    # --------------------------------------------------------
+
+    print("\n[DEBUG] Data_Question columns:")
+    print(list(master.data_question().columns))
+    question_mapping_results = check_question_mapping(
+        questions=questions,
+        master_df=master.data_question(),
+    )
+
+    all_results[
+        "Question Mapping"
+    ] = question_mapping_results
+
+    print_check_summary(
+        "8. Question Mapping",
+        question_mapping_results,
+    )
+
+    print_failures(
+        "8. Question Mapping",
+        question_mapping_results,
+    )
+
+    # ========================================================
+    # 8. FINAL SUMMARY FOR THIS GRADE-SECTION
+    # ========================================================
     summary = _print_final_summary(all_results)
 
-    # ========================================================
-    # SAVE JSON
-    # ========================================================
-    if json_path is None:
-        json_path = "validation_result.json"
+    
 
-    _save_json_report(
-        path=json_path,
-        subject=subject,
-        grade_section=grade_section,
-        master_excel=str(getattr(master, "path", "")),
-        tolerance=settings.numeric_tolerance,
-        all_results=all_results,
-    )
-    print(f"\n✓ Validation result saved to {json_path}")
-
-    # ========================================================
-    # HTML REPORT
-    # ========================================================
-    if report_path is None:
-        report_path = "reports/loam_validation_report.html"
-
-    print("\nGenerating HTML test report...")
-
-    # Existing report function also opens the report. In batch mode we suppress
-    # this by generating the HTML directly when possible; single mode keeps the
-    # original behavior.
-    if open_report:
-        html_report_path = write_and_open_report(
-            subject=subject,
-            grade_section=grade_section,
-            master_excel=str(getattr(master, "path", "")),
-            tolerance=settings.numeric_tolerance,
-            all_results=all_results,
-            output_path=report_path,
-        )
-    else:
-        from report.html_report import build_html_report
-
-        report_file = Path(report_path)
-        report_file.parent.mkdir(parents=True, exist_ok=True)
-        report_file.write_text(
-            build_html_report(
-                subject=subject,
-                grade_section=grade_section,
-                master_excel=str(getattr(master, "path", "")),
-                tolerance=settings.numeric_tolerance,
-                all_results=all_results,
-            ),
-            encoding="utf-8",
-        )
-        html_report_path = report_file
-
-    print(f"✓ Report generated: {html_report_path}")
+    
 
     return all_results, summary
 
@@ -621,10 +725,9 @@ a {{ color:#b9c7ff; text-decoration:none; }}
 def run_single(args, settings: Settings) -> None:
     if not args.master:
         raise RuntimeError("--master is required unless --batch is used.")
+
     if not args.subject:
         raise RuntimeError("--subject is required unless --batch is used.")
-    if not args.grade_section:
-        raise RuntimeError("--grade-section is required unless --batch is used.")
 
     master = MasterWorkbook(args.master)
 
@@ -634,6 +737,9 @@ def run_single(args, settings: Settings) -> None:
         page = context.new_page()
 
         collector = ApiCollector()
+
+        # Attach from the beginning, but collector remains disabled
+        # until we explicitly want to capture APIs.
         page.on("response", collector.handle_response)
 
         nav = LoamNavigator(
@@ -646,17 +752,311 @@ def run_single(args, settings: Settings) -> None:
         print("\n[LOGIN]")
         nav.login()
 
-        validate_one(
-            master=master,
-            subject=args.subject,
-            grade_section=args.grade_section,
-            settings=settings,
-            nav=nav,
-            page=page,
-            collector=collector,
-            open_report=True,
-            report_path="reports/loam_validation_report.html",
-            json_path="validation_result.json",
+        # ========================================================
+        # 1. GO TO CHAPTER IMMEDIATELY
+        # ========================================================
+        print("\n[CHAPTER]")
+        nav.go_to_chapter()
+
+        # ========================================================
+        # 2. WAIT FOR FILTERS
+        # ========================================================
+        nav.wait_for_filters()
+
+        # ========================================================
+        # 3. SELECT SUBJECT
+        # ========================================================
+        nav.select_subject(args.subject)
+
+        # ========================================================
+        # 4. SELECT EXAM
+        # ========================================================
+        nav.select_exam(args.exam)
+
+        # ========================================================
+        # 5. GET ALL GRADE-SECTIONS
+        # ========================================================
+        grade_sections = nav.get_grade_sections()
+
+# Determine grade from master Excel filename, e.g.
+# Class11_UnitTest1_Analysis_202627.xlsx -> 11
+        master_name = str(getattr(master, "path", args.master))
+        grade_match = re.search(r"Class(\d+)", master_name, re.IGNORECASE)
+
+        if not grade_match:
+            raise RuntimeError(
+                f"Could not determine grade from master Excel filename: {master_name}"
+            )
+
+        target_grade = grade_match.group(1)
+
+        grade_sections = [
+            section
+            for section in grade_sections
+            if section.split("-", 1)[0].strip() == target_grade
+        ]
+
+        if not grade_sections:
+            raise RuntimeError(
+                f"No Grade-Sections found for Class {target_grade}. "
+                f"Available sections: {nav.get_grade_sections()}"
+            )
+
+        print("\nGrade-Sections to validate:")
+        for section in grade_sections:
+            print(f"  - {section}")
+
+        
+
+        if args.grade_section:
+            grade_sections = [
+                gs
+                for gs in grade_sections
+                if gs.casefold() == args.grade_section.casefold()
+            ]
+
+        if not grade_sections:
+            raise RuntimeError(
+                "No matching Grade-Section found in LOAM."
+            )
+
+        print("\nGrade-Sections to validate:")
+        for grade_section in grade_sections:
+            print(f"  - {grade_section}")
+
+        # ========================================================
+        # 6. VALIDATE EVERY GRADE-SECTION
+        # ========================================================
+        combined_results = {}
+        section_report_links = {}
+
+        for index, grade_section in enumerate(grade_sections):
+            print("\n" + "#" * 70)
+            print(
+                f"GRADE-SECTION {index + 1}/{len(grade_sections)}"
+            )
+            print(f"{grade_section}")
+            print("#" * 70)
+
+            # For every section after the first one, return to Chapter.
+            # Collector must stay disabled while navigating.
+            if index > 0:
+                collector.disable()
+                nav.go_to_chapter()
+                nav.wait_for_filters()
+
+                # Subject and Exam must be selected again because
+                # Chapter page has been reloaded.
+                nav.select_subject(args.subject)
+                nav.select_exam(args.exam)
+
+            try:
+                all_results, summary = validate_one(
+                    master=master,
+                    subject=args.subject,
+                    grade_section=grade_section,
+                    exam=args.exam,
+                    settings=settings,
+                    nav=nav,
+                    page=page,
+                    collector=collector,
+                    open_report=False,
+                    report_path=None,
+                    json_path=None,
+                )
+
+                combined_results[grade_section] = {
+                    "summary": summary,
+                    "results": all_results,
+                }
+
+            except Exception as exc:
+                print(
+                    f"\n⚠ ERROR — "
+                    f"{args.subject} / {grade_section}: {exc}"
+                )
+
+                combined_results[grade_section] = {
+                    "summary": {
+                        "total": 0,
+                        "passed": 0,
+                        "failed": 0,
+                        "missing": 0,
+                        "errors": 1,
+                        "pass_rate": 0,
+                    },
+                    "results": {},
+                    "error": str(exc),
+                }
+                        # ========================================================
+            # GENERATE INDIVIDUAL GRADE-SECTION REPORT
+            # ========================================================
+            from report.html_report import build_html_report
+
+            safe_name = re.sub(
+                r"[^A-Za-z0-9_.-]+",
+                "_",
+                f"{grade_section}_{args.subject}",
+            )
+
+            section_report_path = (
+                Path("reports")
+                / "sections"
+                / f"{safe_name}.html"
+            )
+
+            section_report_path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            section_report_path.write_text(
+                build_html_report(
+                    subject=args.subject,
+                    exam=args.exam,
+                    grade_section=grade_section,
+                    master_excel=str(
+                        getattr(master, "path", "")
+                    ),
+                    tolerance=settings.numeric_tolerance,
+                    all_results={
+                        grade_section: combined_results[grade_section]
+                    },
+                ),
+                encoding="utf-8",
+            )
+
+            section_report_links[grade_section] = (
+                section_report_path
+                .relative_to("reports")
+                .as_posix()
+            )
+
+            print(
+                f"✓ Section report generated: "
+                f"{section_report_path}"
+            )
+
+        # ========================================================
+        # 7. FINAL COMBINED SUMMARY
+        # ========================================================
+        print("\n" + "=" * 70)
+        print("ALL GRADE-SECTIONS COMPLETE")
+        print("=" * 70)
+
+        total = 0
+        passed = 0
+        failed = 0
+        missing = 0
+        errors = 0
+
+        for grade_section, data in combined_results.items():
+            summary = data["summary"]
+
+            total += summary["total"]
+            passed += summary["passed"]
+            failed += summary["failed"]
+            missing += summary["missing"]
+            errors += summary["errors"]
+
+            print(
+                f"{grade_section:<15} "
+                f"PASS={summary['passed']:<4} "
+                f"FAIL={summary['failed']:<4} "
+                f"MISSING={summary['missing']:<4} "
+                f"ERROR={summary['errors']:<4}"
+            )
+
+        pass_rate = (
+            round(passed / total * 100, 2)
+            if total
+            else 0
+        )
+
+        final_summary = {
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "missing": missing,
+            "errors": errors,
+            "pass_rate": pass_rate,
+        }
+
+        print("-" * 70)
+        print(f"TOTAL    : {total}")
+        print(f"PASS     : {passed}")
+        print(f"FAIL     : {failed}")
+        print(f"MISSING  : {missing}")
+        print(f"ERROR    : {errors}")
+        print(f"PASS RATE: {pass_rate}%")
+
+        # ========================================================
+        # 8. SAVE ONE FINAL JSON
+        # ========================================================
+        json_path = Path("validation_result.json")
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with json_path.open("w", encoding="utf-8") as file:
+            json.dump(
+                {
+                    "subject": args.subject,
+                    "exam": args.exam,
+                    "master_excel": str(
+                        getattr(master, "path", "")
+                    ),
+                    "tolerance": settings.numeric_tolerance,
+                    "summary": final_summary,
+                    "grade_sections": combined_results,
+                },
+                file,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+        print(
+            f"\n✓ Final validation JSON saved to {json_path}"
+        )
+
+        # ========================================================
+        # 9. HTML REPORT
+        # ========================================================
+        print("\nGenerating final HTML report...")
+
+        from report.html_report import build_html_report
+
+        report_path = Path(
+            "reports/loam_validation_report.html"
+        )
+        report_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        report_path.write_text(
+            build_html_report(
+                subject=args.subject,
+                exam=args.exam,
+                grade_section="ALL",
+                master_excel=str(
+                getattr(master, "path", "")
+                ),
+                tolerance=settings.numeric_tolerance,
+                all_results=combined_results,
+                report_links=section_report_links,
+            ),
+            encoding="utf-8",
+        )
+
+        print(
+            f"✓ Final report generated: {report_path}"
+        )
+
+        # Open the single final report.
+        import webbrowser
+
+        webbrowser.open(
+            report_path.resolve().as_uri(),
+            new=1,
         )
 
         page.wait_for_timeout(5000)
@@ -787,6 +1187,7 @@ def run_batch(args, settings: Settings) -> None:
                             master=master,
                             subject=subject,
                             grade_section=grade_section,
+                            exam=args.exam,
                             settings=settings,
                             nav=nav,
                             page=page,
@@ -883,8 +1284,14 @@ def main():
     )
 
     parser.add_argument(
+        "--exam",
+        required=True,
+        help="Exam name exactly as shown in the LOAM dropdown",
+    )
+
+    parser.add_argument(
         "--grade-section",
-        help="Grade-Section to test. Optional in batch mode.",
+        help="Optional Grade-Section filter for testing a single section.",
     )
 
     args = parser.parse_args()

@@ -370,6 +370,80 @@ def check_chapter_average(
 
     return results
 
+def check_chapter_max_marks(
+    chapter_stats,
+    master_df,
+    subject: str,
+    section: str,
+    tolerance: float = TOLERANCE,
+):
+    results = []
+
+    for row in chapter_stats:
+        chapter = row.get("chapter")
+
+        # API chapter max marks field is "chapterMax"
+        api_value = row.get("chapterMax")
+
+        if chapter is None or api_value is None:
+            continue
+
+        matches = master_df[
+            (master_df["Subject"].astype(str).str.strip()
+             == str(subject).strip())
+            & (
+                master_df["Section"].astype(str).str.strip()
+                == str(section).strip()
+            )
+            & (
+                master_df["Chapter"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                == str(chapter).strip().lower()
+            )
+        ]
+
+        if matches.empty:
+            results.append({
+                "check": "Chapter Max Marks",
+                "status": "MISSING",
+                "chapter": chapter,
+                "api_value": api_value,
+                "excel_value": None,
+                "difference": None,
+                "message": "Chapter not found in Excel",
+            })
+            continue
+
+        excel_value = _number(
+            matches.iloc[0]["Chapter Max"]
+        )
+
+        comparison = _compare(
+            api_value,
+            excel_value,
+            tolerance,
+        )
+
+        results.append({
+            "check": "Chapter Max Marks",
+            "chapter": chapter,
+            "status": "PASS" if comparison else "FAIL",
+            "api_value": api_value,
+            "excel_value": excel_value,
+            "difference": abs(
+                float(api_value) - float(excel_value)
+            ),
+            "message": (
+                "Within tolerance"
+                if comparison
+                else "Outside tolerance"
+            ),
+        })
+
+    return results
+
 
 # ============================================================
 # 4. SCORE DISTRIBUTION
@@ -653,6 +727,62 @@ def check_question_stats(
 
     return results
 
+def check_question_max_marks(
+    question_stats,
+    master_df,
+    subject: str,
+    section: str,
+    tolerance: float = TOLERANCE,
+):
+    results = []
+
+    for question in question_stats:
+        question_number = question.get("questionNumber")
+        api_value = question.get("maxMarks")
+
+        if question_number is None or api_value is None:
+            continue
+
+        matches = master_df[
+            (master_df["Subject"].apply(_clean) == _clean(subject))
+            & (master_df["Section"].apply(_clean) == _clean(section))
+            & (
+                pd.to_numeric(
+                    master_df["Q No"],
+                    errors="coerce",
+                )
+                == float(question_number)
+            )
+        ]
+
+        if matches.empty:
+            results.append({
+                "check": "Question Max Marks",
+                "question": question_number,
+                "status": "MISSING",
+                "api_value": api_value,
+                "excel_value": None,
+                "difference": None,
+                "message": "Question not found in Excel.",
+            })
+            continue
+
+        excel_value = _number(matches.iloc[0]["Q Max"])
+
+        comparison = _compare(
+            api_value,
+            excel_value,
+            tolerance,
+        )
+
+        results.append({
+            "check": "Question Max Marks",
+            "question": question_number,
+            **comparison,
+        })
+
+    return results
+
 
 # ============================================================
 # 6. STUDENT CHAPTER-WISE AVERAGE
@@ -801,3 +931,139 @@ def summarize_results(
             else 0
         ),
     }
+
+def check_question_mapping(
+    *,
+    questions,
+    master_df,
+):
+    results = []
+
+    def normalize_text(value):
+        import re
+        import unicodedata
+
+        if value is None:
+            return ""
+
+        text = str(value)
+
+    # Normalize Unicode characters
+        text = unicodedata.normalize("NFKC", text)
+
+    # Case-insensitive comparison
+        text = text.casefold()
+
+    # Convert all whitespace variations to a single normal space
+        text = re.sub(r"\s+", " ", text)
+
+        return text.strip()
+
+    def normalize_question_no(value):
+        if value is None:
+            return None
+
+        try:
+            return str(int(float(value)))
+        except (ValueError, TypeError):
+            return str(value).strip()
+
+    # Build lookup using Subject + Question No.
+    excel_lookup = {}
+
+    for _, row in master_df.iterrows():
+        subject = str(row.get("Subject", "")).strip().casefold()
+        question_no = normalize_question_no(
+            row.get("Question No")
+        )
+
+        if not subject or question_no is None:
+            continue
+
+        key = (subject, question_no)
+        excel_lookup[key] = row
+
+    for question in questions:
+        api_subject = str(
+            question.get("subject", "")
+        ).strip().casefold()
+
+        api_question_no = question.get("questionNumber")
+        normalized_question_no = normalize_question_no(
+            api_question_no
+        )
+
+        key = (
+            api_subject,
+            normalized_question_no,
+        )
+
+        excel_row = excel_lookup.get(key)
+
+        if excel_row is None:
+            results.append({
+                "question": api_question_no,
+                "api_value": {
+                    "subject": question.get("subject"),
+                    "chapter": question.get("chapterName"),
+                    "concept": question.get("concept"),
+                },
+                "excel_value": None,
+                "difference": None,
+                "status": "FAIL",
+                "message": (
+                    "Subject + Question No not found in Excel"
+                ),
+            })
+            continue
+
+        api_chapter = str(
+            question.get("chapterName", "")
+        ).strip()
+
+        excel_chapter = str(
+            excel_row.get("Chapter", "")
+        ).strip()
+
+        api_concept = str(
+            question.get("concept", "")
+        ).strip()
+
+        excel_concept = str(
+            excel_row.get("Concept", "")
+        ).strip()
+
+        chapter_match = (
+            normalize_text(api_chapter)
+            == normalize_text(excel_chapter)
+        )
+
+        concept_match = (
+            normalize_text(api_concept)
+            == normalize_text(excel_concept)
+        )
+
+        passed = chapter_match and concept_match
+
+        results.append({
+            "question": api_question_no,
+            "api_value": {
+                "subject": question.get("subject"),
+                "chapter": api_chapter,
+                "concept": api_concept,
+            },
+            "excel_value": {
+                "subject": excel_row.get("Subject"),
+                "chapter": excel_chapter,
+                "concept": excel_concept,
+            },
+            "difference": None,
+            "status": "PASS" if passed else "FAIL",
+            "message": (
+                "Question number, chapter and concept match"
+                if passed
+                else "Chapter or concept mismatch"
+            ),
+        })
+
+    return results

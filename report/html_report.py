@@ -69,15 +69,34 @@ def _format_value(value: Any) -> str:
 def build_html_report(
     *,
     subject: str,
+    exam: str,
     grade_section: str,
     master_excel: str,
     tolerance: float,
-    all_results: dict[str, list[dict]],
+    all_results: dict,
+    report_links: dict[str, str] | None = None,
 ) -> str:
 
     # --------------------------------------------------------
-    # Overall statistics
+    # New combined structure:
+    #
+    # {
+    #     "11-A": {
+    #         "summary": {...},
+    #         "results": {
+    #             "Individual Student Marks": [...],
+    #             ...
+    #         }
+    #     },
+    #     "11-B": {
+    #         ...
+    #     }
+    # }
     # --------------------------------------------------------
+
+    # ========================================================
+    # OVERALL STATISTICS
+    # ========================================================
 
     total = 0
     passed = 0
@@ -85,34 +104,18 @@ def build_html_report(
     missing = 0
     errors = 0
 
-    for results in all_results.values():
+    for section_data in all_results.values():
 
-        for result in results:
+        summary = section_data.get("summary", {})
 
-            total += 1
-
-            status = result.get(
-                "status",
-                "ERROR",
-            ).upper()
-
-            if status == "PASS":
-                passed += 1
-
-            elif status == "FAIL":
-                failed += 1
-
-            elif status == "MISSING":
-                missing += 1
-
-            else:
-                errors += 1
+        total += summary.get("total", 0)
+        passed += summary.get("passed", 0)
+        failed += summary.get("failed", 0)
+        missing += summary.get("missing", 0)
+        errors += summary.get("errors", 0)
 
     pass_rate = (
-        round(
-            passed / total * 100,
-            2,
-        )
+        round(passed / total * 100, 2)
         if total
         else 0
     )
@@ -128,30 +131,46 @@ def build_html_report(
     generated_at = datetime.now().strftime(
         "%d %b %Y · %I:%M:%S %p"
     )
-
-    # --------------------------------------------------------
-    # Grade / section
-    # --------------------------------------------------------
-
-    grade = ""
-    section = ""
-
-    if "-" in grade_section:
-
-        grade, section = (
-            grade_section.split(
-                "-",
-                1,
-            )
-        )
+    if grade_section and grade_section != "ALL":
+        subtitle_section = _esc(grade_section)
+    else:
+        subtitle_section = f"{len(all_results)} Grade-Section(s)"
 
     # ========================================================
     # CHECK CARDS
     # ========================================================
+    #
+    # Combine the same check across all Grade-Sections.
+    #
+    # Example:
+    #
+    # Individual Student Marks
+    # 11-A → 40 records
+    # 11-B → 40 records
+    # 12-A → 35 records
+    #
+    # The report shows one combined card.
+    # ========================================================
+
+    combined_checks = {}
+
+    for section_data in all_results.values():
+
+        section_results = section_data.get(
+            "results",
+            {},
+        )
+
+        for check_name, results in section_results.items():
+
+            if check_name not in combined_checks:
+                combined_checks[check_name] = []
+
+            combined_checks[check_name].extend(results)
 
     check_cards = []
 
-    for check_name, results in all_results.items():
+    for check_name, results in combined_checks.items():
 
         check_total = len(results)
 
@@ -235,217 +254,309 @@ def build_html_report(
         )
 
     # ========================================================
+    # GRADE-SECTION SUMMARY
+    # ========================================================
+
+    grade_section_rows = []
+
+    for section_name, section_data in all_results.items():
+
+        summary = section_data.get(
+            "summary",
+            {},
+        )
+
+        section_status = (
+            "PASS"
+            if summary.get("failed", 0) == 0
+            and summary.get("missing", 0) == 0
+            and summary.get("errors", 0) == 0
+            else "FAIL"
+        )
+
+        status_class = (
+            "pass"
+            if section_status == "PASS"
+            else "fail"
+        )
+
+        report_link_html = "<span class='muted'>—</span>"
+
+        if report_links and section_name in report_links:
+            report_href = _esc(report_links[section_name])
+
+            report_link_html = f"""
+                <a
+                    class="view-report-btn"
+                    href="{report_href}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    View Report
+                </a>
+            """
+
+        grade_section_rows.append(
+            f"""
+            <tr>
+
+                <td>
+                    <div class="record-name">
+                        {_esc(section_name)}
+                    </div>
+                </td>
+
+                <td class="number">
+                    {summary.get("total", 0)}
+                </td>
+
+                <td class="number">
+                    {summary.get("passed", 0)}
+                </td>
+
+                <td class="number">
+                    {summary.get("failed", 0)}
+                </td>
+
+                <td class="number">
+                    {summary.get("missing", 0)}
+                </td>
+
+                <td class="number">
+                    {summary.get("errors", 0)}
+                </td>
+
+                <td class="number">
+                    {summary.get("pass_rate", 0)}%
+                </td>
+
+                <td>
+                    <span class="status {status_class}">
+                        {_status_icon(section_status)}
+                        {_esc(section_status)}
+                    </span>
+                </td>
+
+                <td>
+                    {report_link_html}
+                </td>
+
+            </tr>
+            """
+        )
+
+    # ========================================================
     # FAILURE SECTIONS
     # ========================================================
 
     failure_sections = []
 
-    for check_name, results in all_results.items():
+    for section_name, section_data in all_results.items():
 
-        failures = [
-            r
-            for r in results
-            if r.get("status")
-            in {
-                "FAIL",
-                "MISSING",
-                "ERROR",
-            }
-        ]
+        section_results = section_data.get(
+            "results",
+            {},
+        )
 
-        if not failures:
-            continue
+        for check_name, results in section_results.items():
 
-        rows = []
+            failures = [
+                r
+                for r in results
+                if r.get("status")
+                in {
+                    "FAIL",
+                    "MISSING",
+                    "ERROR",
+                }
+            ]
 
-        for result in failures:
+            if not failures:
+                continue
 
-            status = result.get(
-                "status",
-                "ERROR",
-            )
+            rows = []
 
-            roll = result.get(
-                "roll_number"
-            )
+            for result in failures:
 
-            student = result.get(
-                "student_name"
-            )
-
-            question = result.get(
-                "question"
-            )
-
-            chapter = result.get(
-                "chapter"
-            )
-
-            api_value = result.get(
-                "api_value"
-            )
-
-            excel_value = result.get(
-                "excel_value"
-            )
-
-            difference = result.get(
-                "difference"
-            )
-
-            identifier_parts = []
-
-            if roll is not None:
-
-                identifier_parts.append(
-                    f"Roll {roll}"
+                status = result.get(
+                    "status",
+                    "ERROR",
                 )
 
-            if student:
-
-                identifier_parts.append(
-                    _esc(student)
+                roll = result.get(
+                    "roll_number"
                 )
 
-            if question is not None:
-
-                identifier_parts.append(
-                    f"Q{_esc(question)}"
+                student = result.get(
+                    "student_name"
                 )
 
-            if chapter:
-
-                identifier_parts.append(
-                    _esc(chapter)
+                question = result.get(
+                    "question"
                 )
 
-            identifier = (
-                " · ".join(
+                chapter = result.get(
+                    "chapter"
+                )
+
+                api_value = result.get(
+                    "api_value"
+                )
+
+                excel_value = result.get(
+                    "excel_value"
+                )
+
+                difference = result.get(
+                    "difference"
+                )
+
+                identifier_parts = [
+                    f"Section {_esc(section_name)}"
+                ]
+
+                if roll is not None:
+                    identifier_parts.append(
+                        f"Roll {roll}"
+                    )
+
+                if student:
+                    identifier_parts.append(
+                        _esc(student)
+                    )
+
+                if question is not None:
+                    identifier_parts.append(
+                        f"Q{_esc(question)}"
+                    )
+
+                if chapter:
+                    identifier_parts.append(
+                        _esc(chapter)
+                    )
+
+                identifier = " · ".join(
                     identifier_parts
                 )
-                if identifier_parts
-                else "Record"
-            )
 
-            if difference is None:
+                if difference is None:
+                    difference_text = "—"
+                else:
+                    difference_text = (
+                        f"{difference:.2f}"
+                    )
 
-                difference_text = "—"
-
-            else:
-
-                difference_text = (
-                    f"{difference:.2f}"
+                status_class = _status_class(
+                    status
                 )
 
-            status_class = _status_class(
-                status
-            )
+                rows.append(
+                    f"""
+                    <tr>
 
-            rows.append(
-                f"""
-                <tr>
+                        <td>
+                            <div class="record-name">
+                                {_esc(identifier)}
+                            </div>
+                        </td>
 
-                    <td>
-                        <div class="record-name">
-                            {_esc(identifier)}
-                        </div>
-                    </td>
+                        <td class="number api-cell">
+                            {_format_value(api_value)}
+                        </td>
 
-                    <td class="number api-cell">
-                        {_format_value(api_value)}
-                    </td>
+                        <td class="number master-cell">
+                            {_format_value(excel_value)}
+                        </td>
 
-                    <td class="number master-cell">
-                        {_format_value(excel_value)}
-                    </td>
+                        <td class="number difference-cell">
+                            {difference_text}
+                        </td>
 
-                    <td class="number difference-cell">
-                        {difference_text}
-                    </td>
-
-                    <td>
-                        <span class="status {status_class}">
-                            <span>
-                                {_status_icon(status)}
+                        <td>
+                            <span class="status {status_class}">
+                                <span>
+                                    {_status_icon(status)}
+                                </span>
+                                {_esc(status)}
                             </span>
-                            {_esc(status)}
-                        </span>
-                    </td>
+                        </td>
 
-                    <td class="reason">
-                        {_esc(
-                            result.get(
-                                "message",
-                                "",
-                            )
-                        )}
-                    </td>
+                        <td class="reason">
+                            {_esc(
+                                result.get(
+                                    "message",
+                                    "",
+                                )
+                            )}
+                        </td>
 
-                </tr>
+                    </tr>
+                    """
+                )
+
+            failure_sections.append(
+                f"""
+                <section class="failure-section">
+
+                    <div class="failure-heading">
+
+                        <div class="failure-heading-left">
+
+                            <div class="failure-alert">
+                                !
+                            </div>
+
+                            <div>
+
+                                <div class="failure-title">
+                                    {_esc(check_name)}
+                                </div>
+
+                                <div class="failure-subtitle">
+                                    Grade-Section:
+                                    {_esc(section_name)}
+                                    ·
+                                    {len(failures)}
+                                    mismatch(es) detected
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                        <div class="failure-count">
+                            {len(failures)}
+                        </div>
+
+                    </div>
+
+                    <div class="table-wrap">
+
+                        <table>
+
+                            <thead>
+                                <tr>
+                                    <th>Record</th>
+                                    <th>LOAM</th>
+                                    <th>Master</th>
+                                    <th>Difference</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {''.join(rows)}
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                </section>
                 """
             )
-
-        failure_sections.append(
-            f"""
-            <section class="failure-section">
-
-                <div class="failure-heading">
-
-                    <div class="failure-heading-left">
-
-                        <div class="failure-alert">
-                            !
-                        </div>
-
-                        <div>
-
-                            <div class="failure-title">
-                                {_esc(check_name)}
-                            </div>
-
-                            <div class="failure-subtitle">
-                                {len(failures)}
-                                mismatch(es) detected
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                    <div class="failure-count">
-                        {len(failures)}
-                    </div>
-
-                </div>
-
-                <div class="table-wrap">
-
-                    <table>
-
-                        <thead>
-
-                            <tr>
-                                <th>Record</th>
-                                <th>LOAM</th>
-                                <th>Master</th>
-                                <th>Difference</th>
-                                <th>Status</th>
-                                <th>Details</th>
-                            </tr>
-
-                        </thead>
-
-                        <tbody>
-                            {''.join(rows)}
-                        </tbody>
-
-                    </table>
-
-                </div>
-
-            </section>
-            """
-        )
 
     # ========================================================
     # NO FAILURE STATE
@@ -481,6 +592,54 @@ def build_html_report(
         failure_content = "".join(
             failure_sections
         )
+
+    # ========================================================
+    # GRADE-SECTION TABLE
+    # ========================================================
+
+    grade_section_table = f"""
+    <div class="section-title-row">
+
+        <div class="section-title">
+            Grade-Section Summary
+        </div>
+
+        <div class="section-hint">
+            {len(all_results)} Grade-Section(s) tested
+        </div>
+
+    </div>
+
+    <section class="failure-section"
+             style="margin-bottom:34px;">
+
+        <div class="table-wrap">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Grade-Section</th>
+                        <th>Total</th>
+                        <th>Passed</th>
+                        <th>Failed</th>
+                        <th>Missing</th>
+                        <th>Errors</th>
+                        <th>Pass Rate</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {''.join(grade_section_rows)}
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+    """
 
     # ========================================================
     # HTML
@@ -1810,6 +1969,28 @@ tbody tr:hover {{
     margin-bottom: 16px;
 }}
 
+.view-report-btn {{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 11px;
+    border-radius: 9px;
+    border: 1px solid rgba(96,165,250,.20);
+    background: rgba(96,165,250,.08);
+    color: var(--blue);
+    font-size: 10px;
+    font-weight: 850;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: .2s ease;
+}}
+
+.view-report-btn:hover {{
+    background: rgba(96,165,250,.16);
+    border-color: rgba(96,165,250,.35);
+    transform: translateY(-1px);
+}}
+
 </style>
 
 </head>
@@ -1847,9 +2028,9 @@ tbody tr:hover {{
                 <div class="subtitle">
                     {_esc(subject)}
                     ·
-                    Grade {_esc(grade)}
+                    {_esc(exam)}
                     ·
-                    Section {_esc(section)}
+                    {subtitle_section}
                 </div>
 
             </div>
@@ -1890,11 +2071,11 @@ tbody tr:hover {{
         <div class="meta-item">
 
             <div class="meta-label">
-                Grade · Section
+                Exam
             </div>
 
             <div class="meta-value">
-                {_esc(grade_section)}
+                {_esc(exam)}
             </div>
 
         </div>
@@ -1989,11 +2170,14 @@ tbody tr:hover {{
 
     </div>
 
+    {grade_section_table}
+
 
     <!-- =====================================================
          CHECKS
          ================================================== -->
 
+    
     <div class="section-title-row">
 
         <div class="section-title">
@@ -2086,6 +2270,7 @@ function downloadReport() {{
 def write_and_open_report(
     *,
     subject: str,
+    exam: str,
     grade_section: str,
     master_excel: str,
     tolerance: float,
@@ -2104,6 +2289,7 @@ def write_and_open_report(
 
     html_content = build_html_report(
         subject=subject,
+        exam=exam,
         grade_section=grade_section,
         master_excel=master_excel,
         tolerance=tolerance,

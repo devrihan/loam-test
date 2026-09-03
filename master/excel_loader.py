@@ -24,8 +24,8 @@ class MasterWorkbook:
         "Section Avg by Subject",
         "Chapter Avg by Section",
         "Question Perf by Section",
-        "Score Distribution",
         "Data_Chapter",
+        "Data_Question",
     ]
 
     def __init__(self, path: str | Path):
@@ -69,11 +69,12 @@ class MasterWorkbook:
             )
 
         for sheet_name in self.REQUIRED_SHEETS:
+            header_row = 0 if sheet_name == "Data_Question" else 3
 
             df = pd.read_excel(
                 self.path,
                 sheet_name=sheet_name,
-                header=3,
+                header=header_row,
             )
 
             # Remove completely empty rows.
@@ -146,19 +147,16 @@ class MasterWorkbook:
             "Question Perf by Section"
         )
 
-    def score_distribution(
-        self,
-    ) -> pd.DataFrame:
-
-        return self.sheet(
-            "Score Distribution"
-        )
+    
 
     def data_chapter(self) -> pd.DataFrame:
 
         return self.sheet(
             "Data_Chapter"
         )
+
+    def data_question(self):
+        return self.sheet("Data_Question")
 
     # =========================================================
     # BASIC INFORMATION

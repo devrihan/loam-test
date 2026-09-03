@@ -78,27 +78,30 @@ class LoamNavigator:
         print("✓ Logged in")
         print("✓ Dashboard opened")
 
-        self.wait_for_filters()
 
     # =========================================================
     # DASHBOARD FILTERS
     # =========================================================
 
     def wait_for_filters(self) -> None:
-        """
-        Wait until Subject and Grade-Sec filters
-        have rendered on the dashboard.
-        """
 
-        print(
-            "Waiting for dashboard filters to load..."
-        )
+
+        print("Waiting for dashboard filters to load...")
 
         try:
             self.page.locator(
                 "button"
             ).filter(
                 has_text="Subject:"
+            ).first.wait_for(
+                state="visible",
+                timeout=15000,
+            )
+
+            self.page.locator(
+                "button"
+            ).filter(
+                has_text="Exams:"
             ).first.wait_for(
                 state="visible",
                 timeout=15000,
@@ -118,9 +121,7 @@ class LoamNavigator:
                 "Dashboard filters did not load."
             )
 
-        print(
-            "✓ Dashboard filters loaded"
-        )
+        print("✓ Dashboard filters loaded")
 
     # =========================================================
     # SUBJECT
@@ -208,6 +209,25 @@ class LoamNavigator:
         print(
             f"✓ Subject selected → {subject}"
         )
+
+# =========================================================
+# EXAM
+# =========================================================
+
+    def select_exam(self, exam: str) -> None:
+        print(f"Selecting Exam → {exam}")
+
+        trigger = self.page.locator("button").filter(has_text="Exams:").first
+        trigger.wait_for(state="visible", timeout=5000)
+        trigger.click()
+
+        option = self.page.get_by_role("option", name=exam, exact=True)
+        option.wait_for(state="visible", timeout=5000)
+        option.click()
+
+        self.page.wait_for_timeout(1000)
+
+        print(f"✓ Exam selected → {exam}")
 
     # =========================================================
     # GRADE-SECTION
